@@ -1,0 +1,9 @@
+def compute_reward(obs: jax.Array, action: jax.Array, prev_action: jax.Array, dt: float, metrics: Dict[str, jax.Array]) -> Tuple[jax.Array, Dict[str, jax.Array]]:
+    """
+    Returns:
+      reward: scalar jax.Array (jit/vmap-safe)
+      reward_components: dict of scalar diagnostic components (jax.Arrays);
+        return an empty dict if no diagnostics are needed
+    """
+    ...
+    return reward, reward_components

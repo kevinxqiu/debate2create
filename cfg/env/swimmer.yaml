@@ -1,0 +1,4 @@
+task: Swimmer
+env_name: swimmer
+xml_path: assets/swimmer.xml
+description: to make the swimmer move forward as fast as possible

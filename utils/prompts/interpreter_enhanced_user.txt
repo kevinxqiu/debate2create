@@ -1,0 +1,90 @@
+Please analyze the following simulation results and provide specialized insights for both the design and control agents.
+
+## Current Design
+**Description**: {design_description}
+**Parameters**: {design_parameters}
+
+## Reward Function Used
+**Best Performing Reward Function**: {reward_function_code}
+
+## Raw Simulation Metrics
+**Overall Score**: {overall_score}
+**Training Metrics**: {training_metrics}
+**Evaluation Results**: {evaluation_metrics}
+
+## Historical Context
+**Previous Rounds**: {round_history}
+**Best Performance So Far**: {best_score}
+**Performance Trend**: {performance_trend}
+
+## Analysis Requests
+
+### Design Agent
+1. **Design Performance Analysis**:
+   - Which design parameters contributed most to performance?
+   - What design characteristics are working well vs. poorly?
+   - How does this design compare to previous attempts?
+
+2. **Design Evolution Guidance**:
+   - What parameter adjustments should be prioritized?
+   - What design philosophy should guide the next iteration?
+   - What exploration directions are most promising?
+
+3. **Design Constraints & Opportunities**:
+   - What physical limitations are being encountered?
+   - What design opportunities are being missed?
+   - What risks should be avoided?
+
+### Control Agent
+1. **Control Performance Analysis**:
+   - How effective was the reward function for this design?
+   - What control challenges does this design present?
+   - How well did the controller adapt to the design?
+
+2. **Design-Control Interaction**:
+   - What design characteristics require specific control strategies?
+   - Where is there mismatch between design and control?
+   - How can control better exploit design strengths?
+
+3. **Reward Function Optimization**:
+   - What reward modifications would improve performance?
+   - What training dynamics need attention?
+   - How can convergence be improved?
+
+## Output Format
+Return valid JSON only in the following format:
+
+```json
+{
+  "design_performance_summary": "Summary of design effectiveness and key insights",
+  "design_insights": "Detailed analysis of design characteristics and parameter effectiveness",
+  "design_suggestions": ["Specific parameter adjustment suggestions for design agent"],
+  "parameter_focus": "Which parameters need most attention",
+  "design_philosophy": "Guiding principles for design evolution",
+  "exploration_direction": "Recommended exploration strategies",
+  "physical_limitations": "Physical constraints encountered",
+  "design_opportunities": "Untapped design potential",
+  "risk_factors": "Design risks to avoid",
+
+  "control_performance_summary": "Summary of control effectiveness and key insights",
+  "control_insights": "Analysis of control challenges and reward function effectiveness",
+  "control_suggestions": ["Specific reward function modification suggestions for control agent"],
+  "design_characteristics": "Key design features that affect control",
+  "control_challenges": "Specific control difficulties with this design",
+  "synergy_analysis": "How well design and control work together",
+  "reward_effectiveness": "Analysis of reward function performance",
+  "training_dynamics": "Training behavior and convergence patterns",
+  "convergence_issues": "Training convergence problems",
+  "reward_modifications": "Specific reward function improvements",
+  "control_strategy": "Recommended control approach",
+  "training_adjustments": "Training parameter modifications",
+  "design_requirements": "What the current design needs from control",
+  "control_adaptations": "How control should adapt to this design",
+  "mismatch_analysis": "Areas where design and control don't align",
+
+  "improvement_recommendations": "Overall strategic recommendations",
+  "performance_analysis": "Explanation of why this performance level was achieved"
+}
+```
+
+Ensure your response is valid JSON that can be parsed directly.

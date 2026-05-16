@@ -1,0 +1,32 @@
+## Mission
+Design a robot morphology optimized for the task: {task_description}
+
+## Environment
+The walker is a two-dimensional bipedal robot with a torso and two legs. Each leg consists of two segments (thigh and leg) plus a foot, connected by hinge joints. The robot walks forward by applying torque to six actuated joints (three per leg).
+
+## Parameters
+Output 10 parameters that define the robot structure. Parameters represent absolute world z-coordinates, which are converted to relative body coordinates in the XML.
+
+**Vertical Segment Endpoints** (absolute world z-coordinates, decreasing downward):
+- `param1`: Upper attachment point of torso (highest point, must be positive, world z-coordinate)
+- `param2`: Lower attachment point of torso and upper attachment point of thigh (must be less than param1, positive, world z-coordinate)
+- `param3`: Lower attachment point of thigh and upper attachment point of leg (must be less than param2, positive, world z-coordinate)
+- `param4`: Lower attachment point of leg and upper attachment point of foot (must be less than param3, positive, world z-coordinate)
+
+**Foot Span** (x-coordinates, horizontal):
+- `param5`: Upper attachment point of foot (x-coordinate, must be positive)
+- `param6`: Lower attachment point of foot (x-coordinate, must be negative)
+
+**Capsule Radii** (size of each segment):
+- `param7`: Torso capsule radius
+- `param8`: Thigh capsule radius
+- `param9`: Leg capsule radius
+- `param10`: Foot capsule radius
+
+## Constraints
+- param1 > param2 > param3 > param4 (all positive, decreasing downward, representing world z-coordinates)
+- param5 is the upper attachment point of foot (must be positive, x-coordinate)
+- param6 is the lower attachment point of foot (must be negative, x-coordinate)
+- The foot should be positioned so param4 is near or at z=0 (floor level)
+- The XML generation code automatically converts these absolute coordinates to relative body coordinates
+- Both legs use the same parameter values (symmetric design)

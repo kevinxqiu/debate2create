@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use Debate2Create, please cite the paper listed in preferred-citation."
+title: "Debate2Create"
+authors:
+  - family-names: Qiu
+    given-names: Kevin
+  - family-names: Cygan
+    given-names: Marek
+license: Apache-2.0
+version: "0.1.0"
+preferred-citation:
+  type: conference-paper
+  title: "Debate2Create: Robot Co-design via Multi-Agent LLM Debate"
+  authors:
+    - family-names: Qiu
+      given-names: Kevin
+    - family-names: Cygan
+      given-names: Marek
+  conference:
+    name: "International Conference on Machine Learning"
+  year: 2026

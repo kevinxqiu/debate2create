@@ -1,0 +1,34 @@
+## Mission
+Design a robot morphology optimized for the task: {task_description}
+
+## Environment
+The ant is a 3D quadruped robot with a central torso and four legs. Each leg consists of three segments connected by hinge joints: an attachment segment from torso to hip, a thigh segment, and a shin/ankle segment. The robot moves forward by coordinating torque across eight actuated joints (two per leg).
+
+## Parameters
+Output **exactly 10 strictly positive** parameters that define the robot structure. Any zero or negative value will invalidate the design and be rejected:
+
+**Torso:**
+- `param1`: Torso radius (spherical torso size)
+
+**Leg Attachment Offsets** (relative to torso center):
+- `param2`: X-offset for leg attachment point
+- `param3`: Y-offset for leg attachment point
+
+**Thigh Segment Direction** (from attachment point):
+- `param4`: X-offset for thigh segment endpoint
+- `param5`: Y-offset for thigh segment endpoint
+
+**Shin/Ankle Segment Direction** (from thigh endpoint):
+- `param6`: X-offset for shin/ankle segment endpoint
+- `param7`: Y-offset for shin/ankle segment endpoint
+
+**Capsule Radii:**
+- `param8`: Hip/attachment segment capsule radius
+- `param9`: Thigh segment capsule radius
+- `param10`: Shin/ankle segment capsule radius
+
+## Constraints
+- Every parameter must be strictly positive. Even slight negatives (e.g., `-0.01`) or zeros break the MuJoCo XML generation, so ensure all values are > 0 before returning them.
+- The four legs use symmetric parameter values (front/back and left/right mirrored). Provide the parameter magnitudes once; the XML generator handles the sign flips internally.
+
+Explore broadly: avoid tiny perturbations of prior designs and feel free to propose meaningfully different morphologies while respecting the positivity and symmetry rules.

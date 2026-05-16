@@ -1,0 +1,4 @@
+task: Hopper
+env_name: hopper
+xml_path: assets/hopper.xml
+description: to make the hopper run forward as fast as possible

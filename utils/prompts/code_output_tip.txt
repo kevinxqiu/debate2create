@@ -1,0 +1,41 @@
+## Output Format
+The output of the reward function should consist of two items:
+    (1) a scalar total reward (jax.Array),
+    (2) a dictionary of reward_components {str: jax.Array}.
+Output only a single ```python``` fenced block containing the function, and nothing else.
+
+## Tips
+  (1) Normalization / bounding:
+      • Keep rewards numerically stable and within a reasonable range.
+      • Prefer smooth saturations like jp.tanh(x), or carefully use jp.exp(-x) with a scale.
+      • Clip with jp.clip to avoid NaNs/Infs (add small eps where needed).
+
+  (2) Temperatures / scales:
+      • If you transform a component (e.g., with jp.exp, jp.tanh), introduce a named temperature/scale
+        parameter inside the function (e.g., temp_speed = 1.0). Do NOT add it as an input argument.
+      • Each transformed component should have its own temperature/scale variable so it can be tuned independently.
+
+  (3) Types and libraries:
+      • Use JAX only: import jax.numpy as jp. Do NOT use PyTorch or NumPy.
+      • Keep dtypes consistent (e.g., use jp.array(0.0, dtype=obs.dtype) for constants).
+      • Avoid Python-side conversions like .item() that break jit/vmap.
+
+  (4) Inputs and purity:
+      • Only use the function arguments (obs, action, prev_action, dt, metrics). Do NOT reference self.* or globals.
+      • Only access keys that exist in the provided `metrics` dict; do not invent metric keys.
+      • Do NOT introduce new function parameters. Define any constants/weights inside the function.
+      • The function must be pure and jit/vmap-safe: no randomness, no printing, no mutation of Python lists, and no control flow on array values (use jp.where).
+
+  (5) Common shaping patterns:
+      • Forward progress: prefer metrics["forward_reward"] if provided; otherwise fall back to the appropriate index in obs.
+      • Energy/torque penalty: jp.mean(action**2)
+      • Smoothness penalty: jp.mean((action - prev_action)**2) when prev_action is available.
+      • Uprightness/stability: bounded terms via jp.tanh or distances with small eps (e.g., jp.sqrt(x*x + 1e-6)).
+
+## Return Contract
+  • Return exactly:
+      reward, reward_components
+  • `reward_components` must be a dictionary. It may be empty, and should only
+    contain scalar JAX arrays useful for offline diagnostics.
+  • Training keeps environment state pytrees static, so do not rely on new
+    component keys being logged automatically during jit training.

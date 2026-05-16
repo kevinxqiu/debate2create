@@ -1,0 +1,18 @@
+## Mission
+Design a robot morphology optimized for the task: {task_description}
+
+## Environment
+The swimmer is a planar robot consisting of three connected segments (links) forming a linear chain. Two rotary joints connect the segments. The robot is suspended in a viscous fluid and propels itself forward by applying torque to the joints, creating undulatory motion.
+
+## Parameters
+Output 6 positive parameters that define the robot structure:
+
+**Segment Lengths:**
+- `param1`: Length of first segment (front/leading segment)
+- `param2`: Length of second segment (middle segment)
+- `param3`: Length of third segment (rear/trailing segment)
+
+**Capsule Radii** (size of each segment):
+- `param4`: First segment capsule radius
+- `param5`: Second segment capsule radius
+- `param6`: Third segment capsule radius

@@ -1,0 +1,18 @@
+# CPU smoke-test and development requirements for Debate2Create.
+# For GPU training, install accelerator-specific JAX/JAXLIB wheels first.
+absl-py==2.3.0
+brax @ git+https://github.com/google/brax.git@8699220a7d29891b22d21c742a77ab7fd6cfddbc
+flax==0.10.6
+google-generativeai==0.8.5
+hydra-core==1.3.2
+jax==0.6.2
+jaxlib==0.6.2
+matplotlib==3.10.3
+mujoco==3.3.3
+mujoco-mjx==3.3.3
+numpy==2.2.6
+omegaconf==2.3.0
+openai==1.88.0
+PyYAML==6.0.2
+tqdm==4.67.1
+wandb==0.25.1

@@ -1,0 +1,67 @@
+## Mission
+Design a robot morphology optimized for the task: {task_description}
+
+## Environment
+The HalfCheetah is a 2D robot with a torso, head, and two legs (rear and front). Each leg has thigh, shin, and foot segments driven by six actuated joints. The goal is forward locomotion with stable contact at reset (no geometry intersecting the ground).
+
+## Masked XML Reference
+"""
+  <mujoco model="cheetah">
+    <compiler angle="radian" coordinate="local" inertiafromgeom="true" settotalmass="14"/>
+    <default>
+      <joint armature=".1" damping=".01" limited="true" solimplimit="0 .8 .03" solreflimit=".02 1" stiffness="8"/>
+      <geom conaffinity="0" condim="3" contype="1" friction=".4 .1 .1" rgba="0.8 0.6 .4 1" solimp="0.0 0.8 0.01" solref="0.02 1"/>
+      <motor ctrllimited="true" ctrlrange="-1 1"/>
+    </default>
+    <size nstack="300000" nuser_geom="1"/>
+    <option gravity="0 0 -9.81" timestep="0.01"/>
+    <asset>...</asset>
+    <worldbody>
+      <light .../>
+      <geom name="floor" .../>
+      <body name="torso" pos="0 0 {height}">
+        <joint name="ignorex" .../>
+        <joint name="ignorez" .../>
+        <joint name="ignorey" .../>
+        <geom fromto="{param1} 0 0 {param2} 0 0" name="torso" size="{param17}" type="capsule"/>
+        <geom fromto="{param2} 0 0 {param3} 0 {param4}" name="head" size="{param18}" type="capsule"/>
+        <body name="bthigh" pos="{param1} 0 0">
+          <joint name="bthigh" .../>
+          <geom fromto="0 0 0 {param5} 0 {param6}" name="bthigh" size="{param19}" type="capsule"/>
+          <body name="bshin" pos="{param5} 0 {param6}">
+            <joint name="bshin" .../>
+            <geom fromto="0 0 0 {param7} 0 {param8}" name="bshin" size="{param20}" type="capsule"/>
+            <body name="bfoot" pos="{param7} 0 {param8}">
+              <joint name="bfoot" .../>
+              <geom fromto="0 0 0 {param9} 0 {param10}" name="bfoot" size="{param21}" type="capsule"/>
+            </body>
+          </body>
+        </body>
+        <body name="fthigh" pos="{param2} 0 0">
+          <joint name="fthigh" .../>
+          <geom fromto="0 0 0 {param11} 0 {param12}" name="fthigh" size="{param22}" type="capsule"/>
+          <body name="fshin" pos="{param11} 0 {param12}">
+            <joint name="fshin" .../>
+            <geom fromto="0 0 0 {param13} 0 {param14}" name="fshin" size="{param23}" type="capsule"/>
+            <body name="ffoot" pos="{param13} 0 {param14}">
+              <joint name="ffoot" .../>
+              <geom fromto="0 0 0 {param15} 0 {param16}" name="ffoot" size="{param24}" type="capsule"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </worldbody>
+    <actuator>...</actuator>
+  </mujoco>
+"""
+
+## Parameters
+24 parameters; height is separate.
+- params 1–4: torso start/end, head end (x,z)
+- params 5–10: rear leg chain (thigh, shin, foot from/to x,z)
+- params 11–16: front leg chain (thigh, shin, foot from/to x,z)
+- params 17–24: capsule radii (torso, head, bthigh, bshin, bfoot, fthigh, fshin, ffoot)
+
+## Constraints
+- Keep joint ranges/gears as given; do not change coordinates.
+- Ensure the robot starts above ground (no geometry intersecting the floor).

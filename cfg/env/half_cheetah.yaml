@@ -1,0 +1,4 @@
+task: HalfCheetah
+env_name: half_cheetah
+xml_path: assets/half_cheetah.xml
+description: to make the half cheetah run forward as fast as possible

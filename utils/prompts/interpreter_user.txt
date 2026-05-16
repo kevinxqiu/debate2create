@@ -1,0 +1,54 @@
+Please analyze the following simulation results and provide detailed insights for the design and control agents.
+
+## Current Design
+**Description**: {design_description}
+**Parameters**: {design_parameters}
+
+## Raw Simulation Metrics
+**Overall Score**: {overall_score}
+**Training Metrics**: {training_metrics}
+**Evaluation Results**: {evaluation_metrics}
+
+## Historical Context
+**Previous Rounds**: {round_history}
+**Best Performance So Far**: {best_score}
+**Performance Trend**: {performance_trend}
+
+## Analysis Requests
+Please carefully analyze the raw metrics and simulation results to provide:
+
+1. **Design Analysis**:
+   - What design characteristics contributed to this performance?
+   - Which parameters appear to be well-tuned vs. problematic?
+   - How does this design compare to previous attempts?
+
+2. **Control Analysis**:
+   - What control challenges does this design present?
+   - How effective was the reward function for this design?
+   - What control strategies might work better?
+
+3. **Improvement Recommendations**:
+   - Specific parameter adjustments for the design agent
+   - Reward function modifications for the control agent
+   - Strategic guidance for the next round
+
+4. **Performance Insights**:
+   - Why did this design perform at this level?
+   - What are the key limiting factors?
+   - What opportunities exist for improvement?
+
+## Output Format
+Return valid JSON only in the following format:
+
+```json
+{
+  "design_insights": "Detailed analysis of design characteristics and parameter effectiveness",
+  "control_insights": "Analysis of control challenges and reward function effectiveness",
+  "improvement_recommendations": "Specific actionable recommendations for both agents",
+  "performance_analysis": "Explanation of why this performance level was achieved",
+  "design_suggestions": ["Specific parameter adjustment suggestions"],
+  "control_suggestions": ["Specific reward function modification suggestions"]
+}
+```
+
+Ensure your response is valid JSON that can be parsed directly.

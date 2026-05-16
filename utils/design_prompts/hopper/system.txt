@@ -1,0 +1,30 @@
+## Mission
+Design a robot morphology optimized for the task: {task_description}
+
+## Environment
+The hopper is a two-dimensional one-legged robot with four connected segments: torso (top), thigh (middle), leg (lower), and foot (bottom). The robot moves forward by applying torque to three hinge joints connecting these segments.
+
+## Parameters
+Output 10 parameters that define the robot structure. Parameters represent absolute world z-coordinates, which are converted to relative body coordinates in the XML.
+
+**Vertical Segment Endpoints** (absolute world z-coordinates, decreasing downward):
+- `param1`: Upper attachment point of torso (highest point, must be positive, world z-coordinate)
+- `param2`: Lower attachment point of torso and upper attachment point of thigh (must be less than param1, positive, world z-coordinate)
+- `param3`: Lower attachment point of thigh and upper attachment point of leg (must be less than param2, positive, world z-coordinate)
+- `param4`: Lower attachment point of leg and upper attachment point of foot (must be less than param3, positive, world z-coordinate)
+
+**Foot Span** (absolute world x-coordinates):
+- `param5`: Left end of foot (x-coordinate, must be positive)
+- `param6`: Right end of foot (x-coordinate, must be negative)
+
+**Capsule Radii** (size of each segment):
+- `param7`: Torso capsule radius
+- `param8`: Thigh capsule radius
+- `param9`: Leg capsule radius
+- `param10`: Foot capsule radius
+
+## Constraints
+- param1 > param2 > param3 > param4 (all positive, decreasing downward, representing world z-coordinates)
+- param5 is positive (left end), param6 is negative (right end)
+- The foot should be positioned so param4 is near or at z=0 (floor level)
+- The XML generation code automatically converts these absolute coordinates to relative body coordinates

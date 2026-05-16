@@ -1,0 +1,4 @@
+task: Walker2d
+env_name: walker2d
+xml_path: assets/walker2d.xml
+description: to make the walker2d run forward as fast as possible

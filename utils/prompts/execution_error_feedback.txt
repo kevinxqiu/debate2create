@@ -1,0 +1,12 @@
+## Error
+Executing the reward function code above produced this exact error:
+
+{traceback_msg}
+
+## Instructions
+Carefully analyze your previous answer and explain (in 2–3 sentences) why it failed, citing the traceback above. After you have articulated the root cause, briefly describe the specific adjustments you will make. Then provide a revised reward function that implements those adjustments. Keep the same JAX/Brax constraints (only `jax`, `jp`, and `Array = jax.Array` are available) and continue to return both the reward scalar and diagnostics dictionary.
+
+Do NOT change the function signature or add/remove parameters. Do NOT introduce new imports or globals. Do NOT reference metric keys that were not provided; only access keys that exist in the `metrics` dict.
+
+## Output Format
+Keep code within a single ```python``` fence.

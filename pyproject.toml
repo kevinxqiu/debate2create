@@ -1,0 +1,71 @@
+[project]
+name = "debate2create"
+version = "0.1.0"
+description = "Multi-agent LLM debate for robotics design-control co-optimization."
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "Kevin Qiu"},
+  {name = "Marek Cygan"}
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Robotics"
+]
+keywords = ["robotics", "reinforcement-learning", "large-language-models", "mujoco", "brax"]
+dependencies = [
+  "absl-py==2.3.0",
+  "brax @ git+https://github.com/google/brax.git@8699220a7d29891b22d21c742a77ab7fd6cfddbc",
+  "flax==0.10.6",
+  "google-generativeai==0.8.5",
+  "hydra-core==1.3.2",
+  "jax==0.6.2",
+  "jaxlib==0.6.2",
+  "matplotlib==3.10.3",
+  "mujoco==3.3.3",
+  "mujoco-mjx==3.3.3",
+  "numpy==2.2.6",
+  "omegaconf==2.3.0",
+  "openai==1.88.0",
+  "PyYAML==6.0.2",
+  "tqdm==4.67.1",
+  "wandb==0.25.1"
+]
+
+[project.scripts]
+d2c-debate = "src.debate_entry:main"
+d2c-train-xml = "scripts.train_xml_reward:main"
+d2c-render = "scripts.render_xml_reward:main"
+d2c-render-policy = "src.render_policy:main"
+d2c-baselines = "baselines.run_baselines:main"
+d2c-plot = "scripts.plot_debate_performance:main"
+
+[project.optional-dependencies]
+local-llm = [
+  "torch",
+  "transformers"
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "utils*", "envs*", "baselines*", "scripts*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+ignore = [
+  "E402",  # Scripts adjust sys.path before repo-local imports.
+]

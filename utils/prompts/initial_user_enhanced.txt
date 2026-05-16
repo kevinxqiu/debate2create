@@ -1,0 +1,28 @@
+## Task
+The Python environment is {task_obs_code_string}.
+
+Write a reward function for the following task: {task_description}.
+
+## Design Analysis
+Before writing the reward function, consider:
+1. **Design Characteristics**: What are the key features of this robot design?
+2. **Control Challenges**: What control difficulties does this design present?
+3. **Design Strengths**: What advantages does this design offer for the task?
+4. **Design Weaknesses**: What limitations need to be addressed in the reward function?
+
+## Reward Strategy
+Based on the design analysis, create a reward function that:
+- Exploits the design's strengths
+- Compensates for the design's weaknesses
+- Provides appropriate control signals for this specific design
+- Guides the robot toward successful task completion
+- Includes a leading docstring summarizing which design strengths/weaknesses the reward targets
+
+## Learning From Previous Attempts
+If feedback from previous rounds is provided, pay special attention to:
+- What worked well in previous reward functions
+- What didn't work and should be avoided
+- Specific suggestions for improvement
+- The actual code from previous reward functions (use as reference, don't copy)
+
+Focus on creating a reward function that is specifically tailored to work well with this particular robot design, learning from previous attempts to improve performance.
