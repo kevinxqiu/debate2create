@@ -210,6 +210,16 @@ def main() -> None:
         default=0.5,
         help="FK validation threshold in degrees.",
     )
+    parser.add_argument(
+        "--recenter-time",
+        type=float,
+        help=(
+            "Subtract the root xy position at this time (seconds) from the "
+            "exported qpos so the render window starts near the origin. "
+            "Presentation-only rigid translation; measured metrics are "
+            "computed before the shift."
+        ),
+    )
     args = parser.parse_args()
 
     html_path = Path(args.html).expanduser().resolve()
@@ -298,6 +308,20 @@ def main() -> None:
         resampled = True
         metrics["resample_fps"] = int(args.resample_fps)
 
+    recenter_shift = None
+    if args.recenter_time is not None:
+        ref_idx = int(np.searchsorted(out_time, args.recenter_time))
+        ref_idx = min(ref_idx, out_qpos.shape[0] - 1)
+        free_adr = next(
+            int(model.jnt_qposadr[j])
+            for j in range(model.njnt)
+            if int(model.jnt_type[j]) == int(mujoco.mjtJoint.mjJNT_FREE)
+        )
+        recenter_shift = out_qpos[ref_idx, free_adr : free_adr + 2].copy()
+        out_qpos[:, free_adr : free_adr + 2] -= recenter_shift
+        metrics["recenter_time_s"] = float(args.recenter_time)
+        metrics["recenter_shift_xy"] = recenter_shift.tolist()
+
     metadata = {
         "schema": "d2c.mujoco_trajectory.v1",
         "source": "brax_html_extract",
@@ -321,9 +345,17 @@ def main() -> None:
         ],
         "fk_max_pos_err_m": max_pos_err,
         "fk_max_ang_err_deg": max_ang_err_deg,
+        "recenter_shift_xy": recenter_shift.tolist()
+        if recenter_shift is not None
+        else None,
         "notes": (
             "qpos reconstructed from world-frame link poses embedded in a Brax "
             "HTML policy render; FK-validated against the stored poses."
+            + (
+                " Root xy rigidly translated for presentation framing."
+                if recenter_shift is not None
+                else ""
+            )
         ),
     }
 
