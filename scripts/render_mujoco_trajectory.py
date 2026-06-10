@@ -524,6 +524,7 @@ def render(args: argparse.Namespace) -> None:
     else:
         camera_arg = camera
 
+    base_light_pos = model.light_pos.copy()
     root_positions: list[np.ndarray] = []
     frame_paths: list[Path] = []
     for out_idx, trajectory_idx in enumerate(indices):
@@ -535,6 +536,11 @@ def render(args: argparse.Namespace) -> None:
         mujoco.mj_forward(model, data)
         root_pos = np.array(data.xpos[body_id], dtype=np.float64)
         root_positions.append(root_pos)
+        if args.track_lights:
+            # Keep world-frame lights above the tracked body so directional
+            # shadows and lighting stay correct far from the origin.
+            data.light_xpos[:, 0] = base_light_pos[:, 0] + root_pos[0]
+            data.light_xpos[:, 1] = base_light_pos[:, 1] + root_pos[1]
 
         if not args.camera_name:
             if args.fixed_camera:
@@ -640,6 +646,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep-shadows",
         action="store_true",
         help="Keep shadow rendering (depth cue) instead of disabling it.",
+    )
+    parser.add_argument(
+        "--track-lights",
+        action="store_true",
+        help="Translate world lights with the tracked body so shadows stay correct far from the origin.",
     )
     parser.add_argument(
         "--floor-extent",
