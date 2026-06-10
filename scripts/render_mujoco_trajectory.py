@@ -118,6 +118,21 @@ def _apply_presentation_visuals(model: mujoco.MjModel, *, plain_floor: bool) -> 
             model.geom_rgba[geom_id] = np.array([0.72, 0.76, 0.72, 1.0])
 
 
+def _extend_floor(model: mujoco.MjModel, extent: float) -> None:
+    """Grow plane geoms to `extent` meters while keeping texture density."""
+    for geom_id in range(model.ngeom):
+        if model.geom_type[geom_id] != mujoco.mjtGeom.mjGEOM_PLANE:
+            continue
+        old_half = float(model.geom_size[geom_id][0])
+        mat_id = int(model.geom_matid[geom_id])
+        if mat_id >= 0 and old_half > 0:
+            repeat = model.mat_texrepeat[mat_id].copy()
+            model.mat_texuniform[mat_id] = 1
+            model.mat_texrepeat[mat_id] = repeat / old_half / 2.0
+        model.geom_size[geom_id][0] = extent
+        model.geom_size[geom_id][1] = extent
+
+
 def generate_smoke_trajectory(
     *,
     model: mujoco.MjModel,
@@ -367,14 +382,16 @@ def _encode_mp4(frames_dir: Path, output: Path, fps: int, crf: int, overwrite: b
     subprocess.run(cmd, check=True)
 
 
-def _apply_clean_scene(renderer: mujoco.Renderer) -> None:
+def _apply_clean_scene(renderer: mujoco.Renderer, *, keep_shadows: bool = False) -> None:
     flags = renderer.scene.flags
-    for flag in (
-        mujoco.mjtRndFlag.mjRND_SHADOW,
+    disabled = [
         mujoco.mjtRndFlag.mjRND_REFLECTION,
         mujoco.mjtRndFlag.mjRND_FOG,
         mujoco.mjtRndFlag.mjRND_HAZE,
-    ):
+    ]
+    if not keep_shadows:
+        disabled.append(mujoco.mjtRndFlag.mjRND_SHADOW)
+    for flag in disabled:
         flags[flag] = 0
 
 
@@ -390,6 +407,8 @@ def render(args: argparse.Namespace) -> None:
 
     model = mujoco.MjModel.from_xml_path(str(xml_path))
     _apply_presentation_visuals(model, plain_floor=not args.keep_xml_floor)
+    if args.floor_extent is not None:
+        _extend_floor(model, args.floor_extent)
 
     if args.generate_smoke:
         smoke_path = Path(args.generate_smoke).expanduser().resolve()
@@ -476,7 +495,7 @@ def render(args: argparse.Namespace) -> None:
             camera.lookat[:] = lookat
 
         renderer.update_scene(data, camera=camera_arg)
-        _apply_clean_scene(renderer)
+        _apply_clean_scene(renderer, keep_shadows=bool(args.keep_shadows))
         pixels = renderer.render()
         image = _annotate_frame(
             pixels,
@@ -538,6 +557,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--font-size", type=int, default=34)
     parser.add_argument("--progress", action="store_true", help="Draw a small progress bar.")
     parser.add_argument("--keep-xml-floor", action="store_true", help="Keep XML floor materials instead of using a neutral presentation floor.")
+    parser.add_argument("--keep-shadows", action="store_true", help="Keep shadow rendering (depth cue) instead of disabling it.")
+    parser.add_argument("--floor-extent", type=float, help="Grow plane geoms to this half-extent in meters, preserving texture density.")
     parser.add_argument("--crf", type=int, default=17)
     parser.add_argument("--smoke-seconds", type=float, default=1.5)
     parser.add_argument("--smoke-seed", type=int, default=0)
