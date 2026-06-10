@@ -4,7 +4,7 @@ This is the approval-prep plan for producing final walking clips. It is not a su
 
 ## Current Blocker
 
-The local video pipeline is ready, but the active repo has no trained D2C or baseline policy checkpoints. Final ICML clips require trained policies for the shot list in `docs/icml_video_shot_list.md`.
+The local video pipeline is ready for renderer smoke tests, but the active repo has no trained D2C or baseline policy checkpoints. Final ICML clips require trained policies and exported `.npz` qpos/qvel trajectories for the shot list in `docs/icml_video_shot_list.md`.
 
 ## Minimal Training Set For Approval
 
@@ -39,8 +39,10 @@ Before requesting a long cluster run:
 1. Confirm the project environment on the cluster has `hydra-core`, `omegaconf`, Brax, JAX/JAXLIB, MuJoCo, ffmpeg, and Chrome/Playwright if capture will happen there.
 2. Run a tiny training smoke job, for example a 10k-step Walker2d D2C pair, only after the relevant cluster workflow and `cluster-check`.
 3. Confirm the smoke job writes `params_best`.
-4. Generate one Brax HTML rollout from that checkpoint.
-5. Run `scripts/capture_brax_html.py` on the HTML and inspect one frame.
+4. Export one `.npz` qpos/qvel trajectory from that checkpoint with `--trajectory-out`.
+5. Render the `.npz` with `scripts/render_mujoco_trajectory.py` using native MuJoCo.
+6. Generate a Brax HTML fallback only for debugging if needed.
+7. Inspect ffprobe metadata and representative frames.
 
 ## Approval Request Shape
 
@@ -50,6 +52,7 @@ When ready, ask Kevin with:
 - command matrix and number of jobs
 - estimated GPU hours and wall time
 - output directory path, using a new timestamped directory
+- trajectory export paths and final MP4 paths
 - whether this is a smoke run or final production run
 - confirmation that no local GPU/heavy rendering will run
 

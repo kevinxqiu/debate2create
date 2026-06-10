@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from scripts.render_xml_reward import build_env, rollout_and_render_html
+from scripts.render_xml_reward import build_env, infer_env_name_from_xml, rollout_and_render_html
 
 
 def _find_xml(run_folder_path: Path) -> Path:
@@ -29,6 +29,7 @@ def render_from_path(
     steps: int = 1000,
     random_actions: bool = False,
     algo: str = "ppo",
+    trajectory_out=None,
 ):
     """Render a Brax HTML rollout from a run folder or explicit paths."""
     run_folder = Path(run_folder_path) if run_folder_path is not None else None
@@ -54,7 +55,8 @@ def render_from_path(
             output_path = output_path / "policy_render.html"
 
     reward = Path(reward_path) if reward_path is not None else None
-    env = build_env(Path(xml_path), reward, env_name)
+    detected_env_name = env_name or infer_env_name_from_xml(Path(xml_path))
+    env = build_env(Path(xml_path), reward, detected_env_name)
     return rollout_and_render_html(
         env,
         Path(params_path) if params_path is not None else None,
@@ -62,6 +64,10 @@ def render_from_path(
         Path(output_path),
         use_random_actions=bool(random_actions),
         algo=algo,
+        trajectory_out=Path(trajectory_out) if trajectory_out is not None else None,
+        xml_path=Path(xml_path),
+        reward_path=reward,
+        env_name=detected_env_name,
     )
 
 
@@ -75,6 +81,7 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--random-actions", action="store_true")
     parser.add_argument("--algo", choices=["ppo", "sac"], default="ppo")
+    parser.add_argument("--trajectory-out", help="Optional `.npz` qpos/qvel export for native MuJoCo rendering")
     parser.add_argument("--output", "-o", help="Output HTML file or directory")
     args = parser.parse_args()
 
@@ -91,6 +98,7 @@ def main() -> None:
         steps=args.steps,
         random_actions=args.random_actions,
         algo=args.algo,
+        trajectory_out=args.trajectory_out,
     )
     print(f"Rendered rollout saved to: {result}")
     print(f"Open in browser: file://{Path(result).resolve()}")

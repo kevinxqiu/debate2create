@@ -42,3 +42,6 @@ This is the presentation-facing shot list for Debate2Create videos. It mirrors t
 - For ablations, label morphology and reward separately.
 - Prefer one continuous rollout per clip. If edited for time, say so.
 - Put quantitative metrics on the slide or in a compact overlay; do not rely on video alone as evidence.
+- Use native MuJoCo MP4s for final visual assets. Brax HTML captures are fallback/debug previews.
+- Use one labeling layer per final clip or layout. Do not stack renderer labels and compositor labels.
+- Reject layouts where labels are clipped after scaling, even if the source clips looked acceptable alone.
