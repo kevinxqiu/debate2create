@@ -62,7 +62,9 @@ def _json_from_npz(value: Any) -> dict[str, Any]:
     return dict(value)
 
 
-def _model_names(model: mujoco.MjModel, obj_type: mujoco.mjtObj, count: int) -> list[str]:
+def _model_names(
+    model: mujoco.MjModel, obj_type: mujoco.mjtObj, count: int
+) -> list[str]:
     names: list[str] = []
     for idx in range(count):
         names.append(mujoco.mj_id2name(model, obj_type, idx) or "")
@@ -197,7 +199,9 @@ def generate_smoke_trajectory(
     print(f"Wrote smoke trajectory: {output}")
 
 
-def load_trajectory(path: Path, model: mujoco.MjModel, fps: int) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, dict[str, Any]]:
+def load_trajectory(
+    path: Path, model: mujoco.MjModel, fps: int
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, dict[str, Any]]:
     if not path.exists():
         raise SystemExit(f"Trajectory file not found: {path}")
     with np.load(path, allow_pickle=False) as data:
@@ -205,15 +209,27 @@ def load_trajectory(path: Path, model: mujoco.MjModel, fps: int) -> tuple[np.nda
             raise SystemExit(f"Trajectory is missing qpos: {path}")
         qpos = np.asarray(data["qpos"], dtype=np.float64)
         qvel = np.asarray(data["qvel"], dtype=np.float64) if "qvel" in data else None
-        time = np.asarray(data["time"], dtype=np.float64) if "time" in data else np.arange(len(qpos)) / float(fps)
-        metadata = _json_from_npz(data["metadata_json"]) if "metadata_json" in data else {}
+        time = (
+            np.asarray(data["time"], dtype=np.float64)
+            if "time" in data
+            else np.arange(len(qpos)) / float(fps)
+        )
+        metadata = (
+            _json_from_npz(data["metadata_json"]) if "metadata_json" in data else {}
+        )
 
     if qpos.ndim != 2 or qpos.shape[1] != model.nq:
         raise SystemExit(f"qpos shape {qpos.shape} does not match model.nq={model.nq}")
-    if qvel is not None and (qvel.ndim != 2 or qvel.shape[1] != model.nv or qvel.shape[0] != qpos.shape[0]):
-        raise SystemExit(f"qvel shape {qvel.shape} does not match qpos/model.nv={model.nv}")
+    if qvel is not None and (
+        qvel.ndim != 2 or qvel.shape[1] != model.nv or qvel.shape[0] != qpos.shape[0]
+    ):
+        raise SystemExit(
+            f"qvel shape {qvel.shape} does not match qpos/model.nv={model.nv}"
+        )
     if time.ndim != 1 or time.shape[0] != qpos.shape[0]:
-        raise SystemExit(f"time shape {time.shape} does not match qpos length={qpos.shape[0]}")
+        raise SystemExit(
+            f"time shape {time.shape} does not match qpos length={qpos.shape[0]}"
+        )
     if not np.all(np.isfinite(qpos)):
         raise SystemExit("qpos contains NaN or Inf")
     if qvel is not None and not np.all(np.isfinite(qvel)):
@@ -226,17 +242,25 @@ def load_trajectory(path: Path, model: mujoco.MjModel, fps: int) -> tuple[np.nda
     return qpos, qvel, time, metadata
 
 
-def _select_indices(time: np.ndarray, fps: int, start_time: float, seconds: float | None) -> np.ndarray:
+def _select_indices(
+    time: np.ndarray, fps: int, start_time: float, seconds: float | None
+) -> np.ndarray:
     if len(time) == 1:
         if start_time > float(time[0]) + 1e-9:
-            raise SystemExit("Requested start time is beyond the single-frame trajectory")
+            raise SystemExit(
+                "Requested start time is beyond the single-frame trajectory"
+            )
         if seconds is not None and int(round(seconds * fps)) > 1:
             raise SystemExit("Requested duration exceeds single-frame trajectory")
         return np.array([0], dtype=np.int64)
     if start_time < float(time[0]) - 1e-9:
-        raise SystemExit(f"Requested start time {start_time} is before trajectory start {time[0]}")
+        raise SystemExit(
+            f"Requested start time {start_time} is before trajectory start {time[0]}"
+        )
     if start_time > float(time[-1]) + 1e-9:
-        raise SystemExit(f"Requested start time {start_time} is after trajectory end {time[-1]}")
+        raise SystemExit(
+            f"Requested start time {start_time} is after trajectory end {time[-1]}"
+        )
 
     end_time = float(time[-1])
     if seconds is None:
@@ -275,12 +299,19 @@ def _validate_metadata(
         failures.append("metadata xml_sha256 does not match --xml")
     elif metadata_xml_path:
         recorded_xml = Path(str(metadata_xml_path)).expanduser()
-        if recorded_xml.exists() and _xml_sha256(recorded_xml.resolve()) != current_hash:
-            failures.append("metadata xml_path exists but its contents differ from --xml")
+        if (
+            recorded_xml.exists()
+            and _xml_sha256(recorded_xml.resolve()) != current_hash
+        ):
+            failures.append(
+                "metadata xml_path exists but its contents differ from --xml"
+            )
 
     for key, actual in (("nq", model.nq), ("nv", model.nv), ("nu", model.nu)):
         if key in metadata and int(metadata[key]) != int(actual):
-            failures.append(f"metadata {key}={metadata[key]} does not match model {key}={actual}")
+            failures.append(
+                f"metadata {key}={metadata[key]} does not match model {key}={actual}"
+            )
 
     expected_joint_names = metadata.get("joint_names")
     if expected_joint_names:
@@ -296,17 +327,22 @@ def _validate_metadata(
 
     if failures:
         raise SystemExit(
-            "Trajectory metadata does not match the supplied XML: " + "; ".join(failures)
+            "Trajectory metadata does not match the supplied XML: "
+            + "; ".join(failures)
         )
 
 
-def _camera_from_args(args: argparse.Namespace, model: mujoco.MjModel) -> mujoco.MjvCamera:
+def _camera_from_args(
+    args: argparse.Namespace, model: mujoco.MjModel
+) -> mujoco.MjvCamera:
     preset = CAMERA_PRESETS[args.camera]
     camera = mujoco.MjvCamera()
     mujoco.mjv_defaultFreeCamera(model, camera)
     camera.type = mujoco.mjtCamera.mjCAMERA_FREE
     camera.azimuth = args.azimuth if args.azimuth is not None else preset["azimuth"]
-    camera.elevation = args.elevation if args.elevation is not None else preset["elevation"]
+    camera.elevation = (
+        args.elevation if args.elevation is not None else preset["elevation"]
+    )
     camera.distance = args.distance if args.distance is not None else preset["distance"]
     return camera
 
@@ -335,16 +371,27 @@ def _annotate_frame(
         bbox = draw.textbbox((0, 0), label, font=font)
         box_w = bbox[2] - bbox[0] + 2 * pad
         box_h = bbox[3] - bbox[1] + 2 * int(pad * 0.75)
-        draw.rounded_rectangle((pad, y, pad + box_w, y + box_h), radius=5, fill=(0, 0, 0, 185))
-        draw.text((pad * 2, y + int(pad * 0.55)), label, fill=(255, 255, 255, 255), font=font)
+        draw.rounded_rectangle(
+            (pad, y, pad + box_w, y + box_h), radius=5, fill=(0, 0, 0, 185)
+        )
+        draw.text(
+            (pad * 2, y + int(pad * 0.55)), label, fill=(255, 255, 255, 255), font=font
+        )
         y += box_h + int(pad * 0.45)
 
     if sublabel:
         bbox = draw.textbbox((0, 0), sublabel, font=small_font)
         box_w = bbox[2] - bbox[0] + 2 * pad
         box_h = bbox[3] - bbox[1] + 2 * int(pad * 0.65)
-        draw.rounded_rectangle((pad, y, pad + box_w, y + box_h), radius=5, fill=(0, 0, 0, 150))
-        draw.text((pad * 2, y + int(pad * 0.45)), sublabel, fill=(245, 245, 245, 255), font=small_font)
+        draw.rounded_rectangle(
+            (pad, y, pad + box_w, y + box_h), radius=5, fill=(0, 0, 0, 150)
+        )
+        draw.text(
+            (pad * 2, y + int(pad * 0.45)),
+            sublabel,
+            fill=(245, 245, 245, 255),
+            font=small_font,
+        )
 
     if progress and frame_count > 1:
         bar_w = image.width - 2 * pad
@@ -353,12 +400,16 @@ def _annotate_frame(
         y0 = image.height - pad - bar_h
         frac = frame_idx / float(frame_count - 1)
         draw.rectangle((x0, y0, x0 + bar_w, y0 + bar_h), fill=(0, 0, 0, 95))
-        draw.rectangle((x0, y0, x0 + int(bar_w * frac), y0 + bar_h), fill=(255, 255, 255, 210))
+        draw.rectangle(
+            (x0, y0, x0 + int(bar_w * frac), y0 + bar_h), fill=(255, 255, 255, 210)
+        )
 
     return image
 
 
-def _encode_mp4(frames_dir: Path, output: Path, fps: int, crf: int, overwrite: bool) -> None:
+def _encode_mp4(
+    frames_dir: Path, output: Path, fps: int, crf: int, overwrite: bool
+) -> None:
     cmd = [
         "ffmpeg",
         "-hide_banner",
@@ -382,7 +433,9 @@ def _encode_mp4(frames_dir: Path, output: Path, fps: int, crf: int, overwrite: b
     subprocess.run(cmd, check=True)
 
 
-def _apply_clean_scene(renderer: mujoco.Renderer, *, keep_shadows: bool = False) -> None:
+def _apply_clean_scene(
+    renderer: mujoco.Renderer, *, keep_shadows: bool = False
+) -> None:
     flags = renderer.scene.flags
     disabled = [
         mujoco.mjtRndFlag.mjRND_REFLECTION,
@@ -398,7 +451,9 @@ def _apply_clean_scene(renderer: mujoco.Renderer, *, keep_shadows: bool = False)
 def render(args: argparse.Namespace) -> None:
     xml_path = Path(args.xml).expanduser().resolve()
     output = Path(args.output).expanduser().resolve()
-    trajectory_path = Path(args.trajectory).expanduser().resolve() if args.trajectory else None
+    trajectory_path = (
+        Path(args.trajectory).expanduser().resolve() if args.trajectory else None
+    )
 
     if not xml_path.exists():
         raise SystemExit(f"XML file not found: {xml_path}")
@@ -428,7 +483,9 @@ def render(args: argparse.Namespace) -> None:
         raise SystemExit("Provide --trajectory or --generate-smoke.")
 
     qpos, qvel, time, metadata = load_trajectory(trajectory_path, model, args.fps)
-    _validate_metadata(metadata, model, xml_path, allow_mismatch=args.allow_metadata_mismatch)
+    _validate_metadata(
+        metadata, model, xml_path, allow_mismatch=args.allow_metadata_mismatch
+    )
     indices = _select_indices(time, args.fps, args.start_time, args.seconds)
     if args.max_frames is not None:
         indices = indices[: args.max_frames]
@@ -443,7 +500,9 @@ def render(args: argparse.Namespace) -> None:
     if frames_dir.exists() and not frames_dir.is_dir():
         raise SystemExit(f"Frames path exists but is not a directory: {frames_dir}")
     if frames_dir.exists() and any(frames_dir.iterdir()) and not args.overwrite:
-        raise SystemExit(f"Frames dir is non-empty, pass --overwrite to replace: {frames_dir}")
+        raise SystemExit(
+            f"Frames dir is non-empty, pass --overwrite to replace: {frames_dir}"
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
     if frames_dir.exists() and args.overwrite:
         for frame_path in frames_dir.glob("frame_*.png"):
@@ -542,23 +601,51 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--seconds", type=float, help="Rendered clip duration.")
     parser.add_argument("--start-time", type=float, default=0.0)
-    parser.add_argument("--max-frames", type=int, help="Hard cap for smoke/debug renders.")
+    parser.add_argument(
+        "--max-frames", type=int, help="Hard cap for smoke/debug renders."
+    )
     parser.add_argument("--camera", choices=sorted(CAMERA_PRESETS), default="side")
-    parser.add_argument("--camera-name", help="Use a named XML camera instead of a free camera preset.")
+    parser.add_argument(
+        "--camera-name", help="Use a named XML camera instead of a free camera preset."
+    )
     parser.add_argument("--azimuth", type=float, help="Override free-camera azimuth.")
-    parser.add_argument("--elevation", type=float, help="Override free-camera elevation.")
+    parser.add_argument(
+        "--elevation", type=float, help="Override free-camera elevation."
+    )
     parser.add_argument("--distance", type=float, help="Override free-camera distance.")
-    parser.add_argument("--fixed-camera", action="store_true", help="Use the first tracked pose as the fixed look-at point.")
-    parser.add_argument("--track-body", help="Body name to track. Defaults to the first non-world body.")
+    parser.add_argument(
+        "--fixed-camera",
+        action="store_true",
+        help="Use the first tracked pose as the fixed look-at point.",
+    )
+    parser.add_argument(
+        "--track-body", help="Body name to track. Defaults to the first non-world body."
+    )
     parser.add_argument("--tracking-alpha", type=float, default=0.15)
-    parser.add_argument("--lookat-z", type=float, help="Override free-camera look-at z coordinate.")
+    parser.add_argument(
+        "--lookat-z", type=float, help="Override free-camera look-at z coordinate."
+    )
     parser.add_argument("--label", help="Primary label burned into frames.")
     parser.add_argument("--sublabel", help="Secondary label burned into frames.")
     parser.add_argument("--font-size", type=int, default=34)
-    parser.add_argument("--progress", action="store_true", help="Draw a small progress bar.")
-    parser.add_argument("--keep-xml-floor", action="store_true", help="Keep XML floor materials instead of using a neutral presentation floor.")
-    parser.add_argument("--keep-shadows", action="store_true", help="Keep shadow rendering (depth cue) instead of disabling it.")
-    parser.add_argument("--floor-extent", type=float, help="Grow plane geoms to this half-extent in meters, preserving texture density.")
+    parser.add_argument(
+        "--progress", action="store_true", help="Draw a small progress bar."
+    )
+    parser.add_argument(
+        "--keep-xml-floor",
+        action="store_true",
+        help="Keep XML floor materials instead of using a neutral presentation floor.",
+    )
+    parser.add_argument(
+        "--keep-shadows",
+        action="store_true",
+        help="Keep shadow rendering (depth cue) instead of disabling it.",
+    )
+    parser.add_argument(
+        "--floor-extent",
+        type=float,
+        help="Grow plane geoms to this half-extent in meters, preserving texture density.",
+    )
     parser.add_argument("--crf", type=int, default=17)
     parser.add_argument("--smoke-seconds", type=float, default=1.5)
     parser.add_argument("--smoke-seed", type=int, default=0)
