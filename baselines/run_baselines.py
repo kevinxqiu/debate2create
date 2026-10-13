@@ -50,6 +50,7 @@ if str(REPO_ROOT / "utils") not in sys.path:
 from src.train_eval import (  # noqa: E402
     build_ppo_budget_from_cfg,
     build_sac_budget_from_cfg,
+    metrics_to_json,
 )
 from utils.make_env import make_env  # noqa: E402
 from utils.eureka_reward_compile import compile_jax_reward  # noqa: E402
@@ -422,14 +423,16 @@ def process_single_method(
     for seed in seeds:
         seed_hparams = dict(hyperparams)
         seed_hparams["seed"] = int(seed)
+        history: List[Tuple[int, float]] = []
         try:
             metrics, history = run_training(env_name, xml_path, reward_fn, algo, seed_hparams)
             per_seed_histories[int(seed)] = history
             score = extract_score(metrics)
             if score is None:
                 raise RuntimeError("Training metrics missing distance/reward fields")
-            if any(not math.isfinite(float(distance)) for _, distance in history):
-                raise ValueError("Non-finite distance in training history")
+            for step, distance in history:
+                if not math.isfinite(float(distance)):
+                    raise ValueError(f"Non-finite distance in training history at step {step}: {distance}")
             per_seed_scores[int(seed)] = float(score)
             result["successful_seeds"].append(int(seed))
             result["scores_by_seed"][str(seed)] = float(score)
@@ -445,7 +448,18 @@ def process_single_method(
                 "error_type": type(exc).__name__,
                 "error": str(exc),
                 "traceback": traceback.format_exc(),
+                "history": [
+                    {"step": int(step), **metrics_to_json({"distance": distance})}
+                    for step, distance in history
+                ],
             }
+            failure_details = result["error_details_by_seed"][str(seed)]
+            first_nonfinite = next(
+                (point for point in failure_details["history"] if isinstance(point["distance"], str)),
+                None,
+            )
+            if first_nonfinite is not None:
+                failure_details["first_nonfinite_history"] = first_nonfinite
             log_validation(method_name, f"Seed {seed}: training failed: {message}", ok=False)
 
     distance_histories_by_seed[method_name] = per_seed_histories
@@ -811,23 +825,13 @@ def main():
     ]
     results.sort(key=lambda item: item["method_name"])
 
-    plot_path = plot_distance_histories_with_ci(
-        distance_histories_by_seed,
-        env_name,
-        plot_dir,
-        ci=float(args.ci),
-        bootstrap_samples=int(args.bootstrap_samples),
-        bootstrap_seed=int(args.bootstrap_seed),
-        plot_seed_traces=bool(args.plot_seed_traces),
-    )
-
     save_results_file(
         results,
         env_name,
         algo,
         base_dir,
         results_file,
-        plot_path,
+        plot_file,
         seeds=seeds,
         ci=float(args.ci),
         bootstrap_samples=int(args.bootstrap_samples),
@@ -841,6 +845,16 @@ def main():
         ci=float(args.ci),
         bootstrap_samples=int(args.bootstrap_samples),
         bootstrap_seed=int(args.bootstrap_seed),
+    )
+
+    plot_distance_histories_with_ci(
+        distance_histories_by_seed,
+        env_name,
+        plot_dir,
+        ci=float(args.ci),
+        bootstrap_samples=int(args.bootstrap_samples),
+        bootstrap_seed=int(args.bootstrap_seed),
+        plot_seed_traces=bool(args.plot_seed_traces),
     )
 
     json.dump(results, sys.stdout, indent=2, allow_nan=False)
