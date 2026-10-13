@@ -4,6 +4,13 @@ This directory stores curated XML and reward files used for baseline
 comparisons. Generated run outputs, logs, plots, result JSON files, and LASeR
 search seed directories are ignored by Git.
 
+See [reproduction and evaluation](../docs/REPRODUCIBILITY.md) for explicit
+seed controls, Swimmer metric semantics, and known reproduction limits.
+The runner saves per-seed errors and exits nonzero if any method or seed fails.
+Means and bootstrap intervals use successful finite seeds only. Existing output
+files are rejected; choose fresh `--results-file`, `--history-file`, and
+`--plot-dir` paths for each experiment.
+
 Run a baseline comparison from the repository root:
 
 ```bash

@@ -23,6 +23,27 @@ PYTHONPATH=src:. python scripts/plot_debate_performance.py --help
 - `preflight.sh`: runs linting, import checks, CPU smoke tests, and source
   archive scans.
 
+`d2c-train-xml --print-config` validates input paths and prints the resolved
+algorithm and budget without constructing an environment. Use `--seed` for an
+explicit training seed and `--timesteps` to override the configured budget.
+Training writes `training_config.json`, `training_history.json`,
+`train_metrics.json`, and `params_best` to a fresh `--output-dir`; failed runs
+retain `training_error.json`. Despite its legacy name, `params_best` contains
+the trainer's final returned parameters, not a checkpoint chosen from the
+callback history.
+
+Rendering an existing policy constructs its inference network directly. Match
+`--algo` to the trained policy and use `--no-normalize-observations` if that
+policy was trained without observation normalization. The renderer supports
+the default PPO/SAC network architectures used by this repository; custom
+network architectures need corresponding inference construction.
+
+`d2c-render-policy` auto-detects `params_best` in a run folder. For helpers that
+save a checkpoint named `params`, pass its path explicitly with `--params`.
+Without policy parameters, rendering uses zero actions by default, or random
+actions with `--random-actions`. Such a rollout is a visualization of the body,
+not evidence of learned-policy performance.
+
 ## Environment Variables
 
 - `OPENAI_API_KEY`: required for OpenAI-backed LLM agents and judges.

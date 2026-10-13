@@ -51,5 +51,5 @@ jobs:
             python src/debate.py env=hopper debate.rounds=0 debate.enable_judges=false
       - name: Smoke tests
         run: |
-          PYTHONPATH=src:. JAX_PLATFORM_NAME=cpu MUJOCO_GL=disable \
+          PYTHONPATH=src:. JAX_PLATFORM_NAME=cpu JAX_DISABLE_JIT=true MUJOCO_GL=disable \
             python -m unittest discover -s tests

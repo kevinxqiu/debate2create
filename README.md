@@ -32,9 +32,11 @@ locomotion environments.
 
 ## Installation
 
-Use Python 3.10 from the repository root:
+Clone the repository and use Python 3.10 from its root:
 
 ```bash
+git clone https://github.com/kevinxqiu/debate2create.git
+cd debate2create
 python3.10 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -42,18 +44,23 @@ python -m pip install -r requirements.txt
 python -m pip install -e . --no-deps
 ```
 
+Keep the source checkout: configs, robot XMLs, and prompt files are read from
+the repository. The supported installation is editable; a standalone wheel
+does not currently include all of these resources.
+
 ## Quick Start
 
 Run the local CPU smoke tests:
 
 ```bash
-PYTHONPATH=src:. JAX_PLATFORM_NAME=cpu MUJOCO_GL=disable \
+PYTHONPATH=src:. JAX_PLATFORM_NAME=cpu JAX_DISABLE_JIT=true MUJOCO_GL=disable \
   python -m unittest discover -s tests
 ```
 
 Run the full local preflight:
 
 ```bash
+python -m pip install ruff==0.15.12
 scripts/preflight.sh
 ```
 
@@ -108,8 +115,24 @@ OPENAI_API_KEY=... PYTHONPATH=src:. python src/debate.py env=hopper \
   rl.envs.hopper.sac.num_timesteps=10000
 ```
 
-The timestep override is only a smoke setting; use larger training budgets for
-meaningful policies.
+This command makes paid LLM calls and runs parallel RL training. Run it on a
+training machine with enough accelerator memory. The timestep override is only
+a functionality check; use larger training budgets for meaningful policies.
+
+## Reproducing and Evaluating Results
+
+See the [reproduction guide](docs/REPRODUCIBILITY.md) for a no-LLM Swimmer
+baseline command, resolved training settings, seed controls, metric semantics,
+and known reproduction limits. A successful smoke test checks that the code
+runs; it does not establish reproduction of the paper's results.
+
+To inspect a fixed design's settings without starting training:
+
+```bash
+d2c-train-xml --xml baselines/swimmer/d2c/swimmer_modified.xml \
+  --reward baselines/swimmer/d2c/reward_id0.py --env-name swimmer \
+  --seed 0 --print-config
+```
 
 ## Useful Entry Points
 

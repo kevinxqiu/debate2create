@@ -19,6 +19,7 @@ fi
 PYTHON_BIN_DIR="$(dirname "$PYTHON_BIN")"
 
 export JAX_PLATFORM_NAME="${JAX_PLATFORM_NAME:-cpu}"
+export JAX_DISABLE_JIT="${JAX_DISABLE_JIT:-true}"
 export MUJOCO_GL="${MUJOCO_GL:-disable}"
 export WANDB_MODE="${WANDB_MODE:-disabled}"
 export PATH="$PYTHON_BIN_DIR:$PATH"
