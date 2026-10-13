@@ -30,6 +30,7 @@ def render_from_path(
     random_actions: bool = False,
     algo: str = "ppo",
     trajectory_out=None,
+    normalize_observations: bool = True,
 ):
     """Render a Brax HTML rollout from a run folder or explicit paths."""
     run_folder = Path(run_folder_path) if run_folder_path is not None else None
@@ -68,6 +69,7 @@ def render_from_path(
         xml_path=Path(xml_path),
         reward_path=reward,
         env_name=detected_env_name,
+        normalize_observations=normalize_observations,
     )
 
 
@@ -81,6 +83,7 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--random-actions", action="store_true")
     parser.add_argument("--algo", choices=["ppo", "sac"], default="ppo")
+    parser.add_argument("--no-normalize-observations", action="store_true", help="Use for policies trained with normalize_observations=false")
     parser.add_argument("--trajectory-out", help="Optional `.npz` qpos/qvel export for native MuJoCo rendering")
     parser.add_argument("--output", "-o", help="Output HTML file or directory")
     args = parser.parse_args()
@@ -99,6 +102,7 @@ def main() -> None:
         random_actions=args.random_actions,
         algo=args.algo,
         trajectory_out=args.trajectory_out,
+        normalize_observations=not args.no_normalize_observations,
     )
     print(f"Rendered rollout saved to: {result}")
     print(f"Open in browser: file://{Path(result).resolve()}")
