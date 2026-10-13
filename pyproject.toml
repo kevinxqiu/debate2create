@@ -32,6 +32,7 @@ dependencies = [
   "numpy==2.2.6",
   "omegaconf==2.3.0",
   "openai==1.88.0",
+  "optax==0.2.8",
   "PyYAML==6.0.2",
   "tqdm==4.67.1",
   "wandb==0.25.1"

@@ -3,8 +3,10 @@ import os
 import time
 import logging
 import ast
+import json
 import random
 from pathlib import Path
+from queue import Empty
 from typing import List, Tuple, Any, Dict, Optional
 from multiprocessing import (
     Queue,
@@ -34,10 +36,9 @@ def visible_gpu_ids() -> List[str]:
     Falls back to nvidia-smi listing, then JAX device_count.
     """
     cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
-    if cvd:
+    if cvd is not None:
         ids = [x.strip() for x in cvd.split(",") if x.strip() != ""]
-        if ids:
-            return ids
+        return [] if ids == ["-1"] else ids
     try:
         import subprocess  # noqa: WPS433
 
@@ -87,7 +88,9 @@ def train_multiple_candidates(
     num_gpus = len(gpu_ids)
     if num_gpus <= 0:
         logger.error("[Main] No GPUs detected.")
-        return []
+        for path in reward_paths:
+            _record_training_failure(path, RuntimeError("No GPUs detected"), traceback_text="")
+        return [(str(path.resolve()), float("-inf")) for path in reward_paths]
     num_procs = min(num_gpus, len(reward_paths))
     if num_procs <= 0:
         logger.error("[Main] No reward candidates provided.")
@@ -98,9 +101,11 @@ def train_multiple_candidates(
     )
     logger.warning(f"[Main] DETECTED {num_gpus} GPU DEVICES")
 
-    cand_queue: Queue = Queue(maxsize=len(reward_paths))
+    cand_queue: Queue = Queue()
     for p in reward_paths:
         cand_queue.put(str(p.resolve()))
+    for _ in range(num_procs):
+        cand_queue.put(None)
 
     result_queue: Queue = Queue(maxsize=len(reward_paths))
     lock = Lock()
@@ -109,39 +114,62 @@ def train_multiple_candidates(
     cfg_dict: Dict[str, Any] = OmegaConf.to_container(cfg, resolve=True)  # type: ignore
 
     procs: List[Process] = []
-    for gpu_idx in range(num_procs):
-        p = Process(
-            target=process_task,
-            args=(cand_queue, result_queue, lock, gpu_ids[gpu_idx], cfg_dict),
-        )
-        p.start()
-        procs.append(p)
-
-    logger.warning(
-        f"[Main] All processes started (workers={num_procs}, candidates={len(reward_paths)})"
-    )
-
     results: List[Tuple[str, float]] = []
-    start = time.time()
-    while time.time() - start <= MAX_BRAX_TRAINING_TIME:
-        while not result_queue.empty():
-            res = result_queue.get()
+    expected_paths = {str(path.resolve()) for path in reward_paths}
+    received_paths = set()
+    failure_reason = ""
+    try:
+        for gpu_idx in range(num_procs):
+            p = Process(
+                target=process_task,
+                args=(cand_queue, result_queue, lock, gpu_ids[gpu_idx], cfg_dict),
+            )
+            p.start()
+            procs.append(p)
+        logger.warning(
+            f"[Main] All processes started (workers={num_procs}, candidates={len(reward_paths)})"
+        )
+        start = time.monotonic()
+        while received_paths != expected_paths:
+            if time.monotonic() - start > MAX_BRAX_TRAINING_TIME:
+                failure_reason = "Training timeout; workers terminated"
+                break
+            try:
+                res = result_queue.get(timeout=1.0)
+            except Empty:
+                if not any(p.is_alive() for p in procs):
+                    failure_reason = "All workers exited before returning every candidate; exit codes: " + str([p.exitcode for p in procs])
+                    break
+                continue
+            if res[0] not in expected_paths or res[0] in received_paths:
+                logger.error(f"[Main] Unexpected or duplicate candidate result: {res[0]}")
+                continue
             results.append(res)
+            received_paths.add(res[0])
             logger.warning(
                 f"[Main] Got result: ({Path(res[0]).name if '/' in res[0] else res[0]}, {res[1]:.4f})"
             )
-        if len(results) == len(reward_paths):
-            break
-        time.sleep(1)
-    else:
-        logger.error("[Main] Timeout waiting for results; terminating children")
+    except Exception as exc:
+        failure_reason = f"Could not run training workers: {type(exc).__name__}: {exc}"
+        logger.error(f"[Main] {failure_reason}")
+    finally:
         for p in procs:
-            p.terminate()
-        return results
+            if p.is_alive():
+                p.terminate()
+            p.join(timeout=10)
+            if p.is_alive():
+                p.kill()
+                p.join(timeout=10)
+        # Workers may have died with unread queued tasks; avoid waiting on feeder threads.
+        for q in (cand_queue, result_queue):
+            q.cancel_join_thread()
+            q.close()
 
-    for p in procs:
-        p.join()
-    logger.warning("[Main] All processes joined")
+    for missing_path in sorted(expected_paths - received_paths):
+        message = failure_reason or "Worker did not return a candidate result"
+        logger.error(f"[Main] {Path(missing_path).name}: {message}")
+        _record_training_failure(Path(missing_path), RuntimeError(message), traceback_text="")
+        results.append((missing_path, float("-inf")))
 
     return results
 
@@ -160,6 +188,8 @@ def process_task(
 
     # --- Per-process GPU selection BEFORE importing jax ---
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    # CUDA remaps the assigned physical device to logical device 0.
+    os.environ["JAX_CUDA_VISIBLE_DEVICES"] = "0"
     os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
     os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.85")
     os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
@@ -172,38 +202,28 @@ def process_task(
 
     # Delay JAX-heavy imports until after the GPU mask is set
     from utils.eureka_reward_compile import compile_jax_reward  # noqa: WPS433
-    from train_eval import train_candidate  # noqa: WPS433
+    from train_eval import CandidateMetricsError, extract_training_score, metrics_to_json, train_candidate  # noqa: WPS433
 
     cfg = OmegaConf.create(cfg_dict)
     # Seed Python and NumPy per worker for deterministic behavior
     try:
         import numpy as np
 
-        seed = int(cfg.get("rl", {}).get("seed", 0)) if isinstance(cfg, dict) else 0
+        seed = int(cfg.rl.get("seed", 0))
         random.seed(seed)
         np.random.seed(seed)
     except Exception:
         pass
 
     while True:
-        # print("1:", cand_queue)
-        if not lock.acquire(timeout=30.0):
-            logger.error(f"[P:{gpu_id}] Lock.acquire() timed out")
-            return
-
-        if cand_queue.empty():
-            lock.release()
-            logger.warning(f"[P:{gpu_id}] Queue empty; exiting")
-            return
-
         try:
-            reward_path = cand_queue.get_nowait()
-        except Exception as e:
-            lock.release()
-            logger.error(f"[P:{gpu_id}] Queue error: {e}")
+            reward_path = cand_queue.get(timeout=30.0)
+        except Empty:
+            logger.error(f"[P:{gpu_id}] Timed out waiting for a candidate or shutdown sentinel")
             return
-        finally:
-            lock.release()
+        if reward_path is None:
+            logger.warning(f"[P:{gpu_id}] Shutdown sentinel received; exiting")
+            return
 
         # Compile the LLM reward with self-fix on compile errors
         try:
@@ -250,7 +270,7 @@ def process_task(
                     )
                     if fixed:
                         code_string = fixed
-                        Path(reward_path).write_text(code_string)
+                        _save_reward_repair(Path(reward_path), code_string)
                         continue
                 try:
                     reward_fn, cleaned_code = compile_jax_reward(code_string)
@@ -268,6 +288,7 @@ def process_task(
                 continue
         except Exception as e:
             logger.error(f"[P:{gpu_id}] Reward compile failed for {reward_path}: {e}")
+            _record_training_failure(Path(reward_path), e)
             _safe_put(result_queue, (reward_path, float("-inf")), logger, gpu_id)
             continue
         try:
@@ -294,30 +315,26 @@ def process_task(
             )
 
             # Save train_metrics for this candidate
-            import json
-
             metrics_file = round_dir / f"train_metrics_{candidate_idx}.json"
-            metrics_file.write_text(json.dumps(train_metrics, default=float, indent=2))
+            metrics_file.write_text(json.dumps(metrics_to_json(train_metrics), allow_nan=False, indent=2))
             logger.warning(
                 f"[P:{gpu_id}] Saved metrics for candidate {candidate_idx}: {reward_path_obj.name}"
             )
 
-            # Choose scalar fitness - prioritize standard distance_from_origin
-            metric_priority = [
-                "eval/episode_distance_from_origin",
-                "eval/episode_reward_forward",  # Fallback: forward velocity
-                "eval/episode_reward_run",  # HalfCheetah fallback
-                "eval/episode_forward_reward",
-                "eval/episode_reward",
-            ]
-            score_val = None
-            for k in metric_priority:
-                if k in train_metrics:
-                    score_val = train_metrics.get(k)
-                    break
-            score = float(score_val if score_val is not None else 0.0)
+            score = extract_training_score(train_metrics)
+        except CandidateMetricsError as e:
+            # A missing/nonfinite evaluation metric is not a reward syntax error.
+            # Keep its diagnostics and exclude it from ranking without an LLM rewrite.
+            logger.error(f"[P:{gpu_id}] Invalid metrics for {reward_path}: {e}")
+            _record_training_failure(Path(reward_path), e)
+            score = float("-inf")
+        except AssertionError as e:
+            logger.error(f"[P:{gpu_id}] Training assertion failed for {reward_path}: {e}")
+            _record_training_failure(Path(reward_path), e)
+            score = float("-inf")
         except Exception as e:
             logger.error(f"[P:{gpu_id}] train_candidate failed for {reward_path}: {e}")
+            _record_training_failure(Path(reward_path), e)
             # Attempt up to two LLM self-reflection/fix passes with full traceback
             traceback_msg = traceback.format_exc()
             score = float("-inf")
@@ -331,7 +348,7 @@ def process_task(
                         break
                     reward_fn, cleaned_code = compile_jax_reward(fixed_code)
                     last_code = cleaned_code
-                    reward_path_obj.write_text(cleaned_code)
+                    _save_reward_repair(reward_path_obj, cleaned_code)
                     # Determine round_dir and candidate_idx from reward_path
                     reward_path_obj = Path(reward_path)
                     round_dir = reward_path_obj.parent
@@ -351,31 +368,64 @@ def process_task(
                     )
                     metrics_file = round_dir / f"train_metrics_{candidate_idx}.json"
                     metrics_file.write_text(
-                        json.dumps(train_metrics, default=float, indent=2)
+                        json.dumps(metrics_to_json(train_metrics), allow_nan=False, indent=2)
                     )
-                    metric_priority = [
-                        "eval/episode_distance_from_origin",
-                        "eval/episode_reward_forward",
-                        "eval/episode_reward_run",
-                        "eval/episode_forward_reward",
-                        "eval/episode_reward",
-                    ]
-                    score_val = None
-                    for k in metric_priority:
-                        if k in train_metrics:
-                            score_val = train_metrics.get(k)
-                            break
-                    score = float(score_val if score_val is not None else 0.0)
+                    score = extract_training_score(train_metrics)
                     break  # success
+                except CandidateMetricsError as e2:
+                    logger.error(f"[P:{gpu_id}] Invalid metrics after retry for {reward_path}: {e2}")
+                    _record_training_failure(Path(reward_path), e2)
+                    score = float("-inf")
+                    break
+                except AssertionError as e2:
+                    logger.error(f"[P:{gpu_id}] Training assertion failed after retry for {reward_path}: {e2}")
+                    _record_training_failure(Path(reward_path), e2)
+                    score = float("-inf")
+                    break
                 except Exception as e2:
                     traceback_msg = traceback.format_exc()
                     logger.error(
                         f"[P:{gpu_id}] Retry after LLM fix failed for {reward_path}: {e2}"
                     )
+                    _record_training_failure(Path(reward_path), e2)
                     score = float("-inf")
 
         # Return the full reward file path to preserve parent directory context
         _safe_put(result_queue, (reward_path, score), logger, gpu_id)
+
+
+def _record_training_failure(reward_path: Path, exc: Exception, *, traceback_text=None):
+    """Preserve each failure separately, including failures before metrics exist."""
+    attempt = 0
+    while True:
+        suffix = f"_attempt{attempt}" if attempt else ""
+        path = reward_path.parent / f"training_failure_{reward_path.stem}{suffix}.json"
+        try:
+            with path.open("x") as file:
+                json.dump({
+                    "reward_path": str(reward_path), "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "traceback": traceback.format_exc() if traceback_text is None else traceback_text,
+                }, file, indent=2)
+            return path
+        except FileExistsError:
+            attempt += 1
+
+
+def _save_reward_repair(reward_path: Path, code: str):
+    """Keep the exact previous generated reward before applying any automatic repair."""
+    attempt = 1
+    backup_dir = reward_path.parent / "reward_repair_history"
+    backup_dir.mkdir(exist_ok=True)
+    while True:
+        backup = backup_dir / f"{reward_path.stem}_before_repair{attempt}.py"
+        try:
+            with backup.open("x") as file:
+                file.write(reward_path.read_text())
+            break
+        except FileExistsError:
+            attempt += 1
+    reward_path.write_text(code)
 
 
 def _safe_put(q: Queue, item, logger, gpu_id: str):
