@@ -146,7 +146,8 @@ d2c-render --help
 
 - `src/debate.py`: main Hydra entry point for Debate2Create.
 - `scripts/train_xml_reward.py`: train a policy for a specific XML and reward.
-- `scripts/render_xml_reward.py`: train and render an XML/reward pair.
+- `scripts/render_xml_reward.py`: render an XML/reward pair with an optional
+  trained policy, without training.
 
 Reward files are Python code and are executed locally when compiled. Review
 LLM-generated or third-party reward files before running training or rendering

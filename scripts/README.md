@@ -13,7 +13,8 @@ PYTHONPATH=src:. python scripts/plot_debate_performance.py --help
 
 - `train_xml_reward.py`: trains a policy for a supplied XML file and optional
   reward file.
-- `render_xml_reward.py`: trains and renders an XML/reward pair to HTML.
+- `render_xml_reward.py`: renders an XML/reward pair and optional trained policy
+  to HTML without training.
 - `train_from_round.py`: retrains a selected candidate from a debate round.
 - `plot_debate_performance.py`: plots best and average score curves from a
   completed debate run.
@@ -27,10 +28,12 @@ PYTHONPATH=src:. python scripts/plot_debate_performance.py --help
 algorithm and budget without constructing an environment. Use `--seed` for an
 explicit training seed and `--timesteps` to override the configured budget.
 Training writes `training_config.json`, `training_history.json`,
-`train_metrics.json`, and `params_best` to a fresh `--output-dir`; failed runs
-retain `training_error.json`. Despite its legacy name, `params_best` contains
-the trainer's final returned parameters, not a checkpoint chosen from the
-callback history.
+`train_metrics.json`, and `params_best` to a fresh `--output-dir`. Environment
+construction or training failures after the output directory is claimed retain
+`training_error.json`. Earlier configuration and reward validation failures
+raise without creating output artifacts. Despite its legacy name, `params_best`
+contains the trainer's final returned parameters, not a checkpoint chosen from
+the callback history.
 
 Rendering an existing policy constructs its inference network directly. Match
 `--algo` to the trained policy and use `--no-normalize-observations` if that

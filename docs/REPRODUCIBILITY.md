@@ -81,13 +81,26 @@ It is therefore an accumulated distance-from-origin score, not final
 displacement or forward velocity. Keep episode length and evaluation settings
 fixed when comparing scores.
 
-The baseline runner records the input file paths and SHA256 hashes, each
-requested seed in `scores_by_seed` and `errors_by_seed`, plus
-`successful_seeds` and `failed_seeds`. Its mean and
+The baseline runner records the input file paths and SHA256 hashes. After
+method validation succeeds, it records each requested seed in `scores_by_seed`
+and `errors_by_seed`, plus `successful_seeds` and `failed_seeds`. Method
+validation failures are saved as a method error before any seed is attempted,
+without populating per-seed entries. Its mean and
 bootstrap confidence interval use only successful finite seeds. Any failed
 seed sets a visible method error and makes the command exit nonzero after
 saving the results. `error_details_by_seed` retains exception types and
-tracebacks. Report the requested seed count, successful seed count,
+tracebacks. When a failed run returns a history,
+`error_details_by_seed[seed].history` preserves it with finite floats and
+non-finite values encoded as strings. `first_nonfinite_history` records the
+first bad step and value when available. Failed histories remain empty in the
+aggregate history input and are excluded from curves and confidence intervals.
+A trainer exception before returning leaves the diagnostic history empty.
+
+Results and history JSON are saved before plotting. The results JSON's
+`plot_path` is the intended PNG path; the file may be absent if plotting skips
+or fails. Plot exceptions still propagate.
+
+Report the requested seed count, successful seed count,
 failure reasons, and survivor statistics together. A four-seed survivor mean
 must not be described as a five-seed reproduction. A bootstrap confidence
 interval is also different from a standard deviation across seeds.
