@@ -5,7 +5,7 @@
 [![Smoke](https://github.com/kevinxqiu/debate2create/actions/workflows/smoke.yml/badge.svg)](https://github.com/kevinxqiu/debate2create/actions/workflows/smoke.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/)
-[![ICML 2026](https://img.shields.io/badge/ICML-2026-orange.svg)](https://arxiv.org/abs/2510.25850)
+[![ICML 2026](https://img.shields.io/badge/ICML-2026-orange.svg)](https://proceedings.mlr.press/v306/qiu26c.html)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-46a7f5.svg)](https://docs.astral.sh/ruff/)
 
 **Debate2Create** is a research codebase for co-optimizing robot morphology and
@@ -201,11 +201,15 @@ If you use Debate2Create in your research, please cite:
 
 ```bibtex
 @inproceedings{qiu2026debate2create,
-  title={Debate2Create: Robot Co-design via Multi-Agent {LLM} Debate},
-  author={Qiu, Kevin and Cygan, Marek},
-  booktitle={Proceedings of the International Conference on Machine Learning (ICML)},
-  year={2026},
-  note={To appear}
+  title = {{D}ebate2{C}reate: Robot Co-design via Multi-Agent {LLM} Debate},
+  author = {Qiu, Kevin and Cygan, Marek},
+  booktitle = {Proceedings of the 43rd International Conference on Machine Learning},
+  year = {2026},
+  pages = {101918--101945},
+  volume = {306},
+  series = {Proceedings of Machine Learning Research},
+  publisher = {PMLR},
+  url = {https://proceedings.mlr.press/v306/qiu26c.html}
 }
 ```
 

@@ -19,3 +19,10 @@ preferred-citation:
   conference:
     name: "International Conference on Machine Learning"
   year: 2026
+  collection-title: Proceedings of the 43rd International Conference on Machine Learning
+  volume: 306
+  start: 101918
+  end: 101945
+  publisher:
+    name: PMLR
+  url: https://proceedings.mlr.press/v306/qiu26c.html
