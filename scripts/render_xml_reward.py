@@ -13,8 +13,9 @@ import jax
 import numpy as np
 from brax.io import html
 from brax.io import model as brax_model
-from brax.training.agents.ppo import train as ppo
-from brax.training.agents.sac import train as sac
+from brax.training.acme import running_statistics
+from brax.training.agents.ppo import networks as ppo_networks
+from brax.training.agents.sac import networks as sac_networks
 import mujoco
 
 from utils.eureka_reward_compile import compile_jax_reward
@@ -33,8 +34,7 @@ def infer_env_name_from_xml(xml_path: Path) -> str:
         return "swimmer"
     if "walker" in name and "2d" in name:
         return "walker2d"
-    # Default fallback
-    return "ant"
+    raise ValueError(f"Cannot infer the environment from {xml_path.name}; pass --env-name")
 
 
 def build_env(xml_path: Path, reward_path: Path | None, env_name: str | None):
@@ -108,14 +108,33 @@ def _save_trajectory(
         "policy": "params" if params_path else ("random-actions" if use_random_actions else "zero-actions"),
         "notes": "Exported from Brax pipeline_state.q/qd for native MuJoCo rendering.",
     }
-    np.savez_compressed(
-        trajectory_out,
-        qpos=qpos,
-        qvel=qvel,
-        ctrl=ctrl,
-        time=time,
-        metadata_json=np.array(json.dumps(metadata, sort_keys=True)),
-    )
+    with trajectory_out.open("xb") as file:
+        np.savez_compressed(
+            file,
+            qpos=qpos,
+            qvel=qvel,
+            ctrl=ctrl,
+            time=time,
+            metadata_json=np.array(json.dumps(metadata, sort_keys=True)),
+        )
+
+
+def make_policy_inference_fn(env, algo: str, *, normalize_observations: bool = True):
+    """Build the repository's default policy architecture without running training."""
+    if algo == "ppo":
+        network_module = ppo_networks
+        network_factory = ppo_networks.make_ppo_networks
+    elif algo == "sac":
+        network_module = sac_networks
+        network_factory = sac_networks.make_sac_networks
+    else:
+        raise ValueError(f"Unsupported algorithm: {algo}")
+
+    kwargs = {}
+    if normalize_observations:
+        kwargs["preprocess_observations_fn"] = running_statistics.normalize
+    networks = network_factory(env.observation_size, env.action_size, **kwargs)
+    return network_module.make_inference_fn(networks)
 
 
 def rollout_and_render_html(
@@ -129,30 +148,24 @@ def rollout_and_render_html(
     xml_path: Path | None = None,
     reward_path: Path | None = None,
     env_name: str | None = None,
+    normalize_observations: bool = True,
 ):
+    if steps <= 0:
+        raise ValueError("steps must be positive")
+    if output_html.exists():
+        raise FileExistsError(f"HTML exists, refusing to overwrite: {output_html}")
+    if trajectory_out is not None and Path(trajectory_out).exists():
+        raise FileExistsError(f"Trajectory exists, refusing to overwrite: {trajectory_out}")
+    if trajectory_out is not None and Path(trajectory_out).resolve() == output_html.resolve():
+        raise ValueError("HTML and trajectory outputs must be different paths")
+    if trajectory_out is not None and xml_path is None:
+        raise ValueError("xml_path is required when trajectory_out is set")
     # Build inference function; if params provided, load and construct inference
     if params_path is not None:
         params = brax_model.load_params(str(params_path))
-
-        # Try to detect algo from params structure, or use provided algo
-        if algo == "sac":
-            make_inference_fn, _, _ = sac.train(
-                environment=env,
-                num_timesteps=10000,  # Must be > min_replay_size even for inference
-                episode_length=1000,
-                normalize_observations=True,
-                action_repeat=1,
-                min_replay_size=8192,
-            )
-        else:
-            # Default to PPO
-            make_inference_fn, _, _ = ppo.train(
-                environment=env,
-                num_timesteps=0,
-                episode_length=1000,
-                normalize_observations=True,
-            )
-
+        make_inference_fn = make_policy_inference_fn(
+            env, algo, normalize_observations=normalize_observations
+        )
         inference_fn = make_inference_fn(params)
         jit_inference_fn = jax.jit(inference_fn)
     else:
@@ -191,7 +204,7 @@ def rollout_and_render_html(
 
     html_str = html.render(env.sys, rollouts)
     output_html.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_html, "w") as f:
+    with open(output_html, "x") as f:
         f.write(html_str)
     if trajectory_out is not None:
         if xml_path is None:
@@ -221,6 +234,7 @@ def main():
     parser.add_argument("--steps", type=int, default=1000, help="Number of rollout steps to render")
     parser.add_argument("--random-actions", action="store_true", help="If no params are provided, use random actions instead of zeros")
     parser.add_argument("--algo", type=str, default="ppo", choices=["ppo", "sac"], help="Algorithm used for training (ppo or sac)")
+    parser.add_argument("--no-normalize-observations", action="store_true", help="Use for policies trained with normalize_observations=false")
     parser.add_argument("--trajectory-out", help="Optional `.npz` qpos/qvel export for native MuJoCo rendering")
     parser.add_argument(
         "--out",
@@ -263,6 +277,7 @@ def main():
         xml_path=xml_path,
         reward_path=reward_path,
         env_name=detected_env_name,
+        normalize_observations=not args.no_normalize_observations,
     )
     print(f"Rendered rollout saved to: {result_path}")
     print(f"Open in browser: file://{result_path.resolve()}%s" % "")

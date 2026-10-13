@@ -23,8 +23,11 @@ Optional arguments are available via `-h`.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import sys
+import traceback
 import zlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -47,6 +50,7 @@ if str(REPO_ROOT / "utils") not in sys.path:
 from src.train_eval import (  # noqa: E402
     build_ppo_budget_from_cfg,
     build_sac_budget_from_cfg,
+    metrics_to_json,
 )
 from utils.make_env import make_env  # noqa: E402
 from utils.eureka_reward_compile import compile_jax_reward  # noqa: E402
@@ -219,7 +223,10 @@ def run_training(env_name: str, xml_path: Path, reward_fn, algo: str, hyperparam
 
 def extract_score(metrics: Dict[str, float]) -> Optional[float]:
     if DISTANCE_METRIC_KEY in metrics and metrics[DISTANCE_METRIC_KEY] is not None:
-        return float(metrics[DISTANCE_METRIC_KEY])
+        score = float(metrics[DISTANCE_METRIC_KEY])
+        if not math.isfinite(score):
+            raise ValueError(f"Non-finite {DISTANCE_METRIC_KEY}: {score}")
+        return score
     return None
 
 
@@ -352,6 +359,14 @@ def process_single_method(
         "seeds": list(seeds),
         "scores_by_seed": {},
         "errors_by_seed": {},
+        "error_details_by_seed": {},
+        "successful_seeds": [],
+        "failed_seeds": [],
+        "aggregation": "mean over successful finite seeds only",
+        "xml_path": None,
+        "xml_sha256": None,
+        "reward_path": None,
+        "reward_sha256": None,
         "reward_function_used": None,
         "hyperparameters": dict(hyperparams),
         "error": None,
@@ -366,6 +381,8 @@ def process_single_method(
 
     try:
         validate_xml(xml_path)
+        result["xml_path"] = str(xml_path.resolve())
+        result["xml_sha256"] = hashlib.sha256(xml_path.read_bytes()).hexdigest()
         log_validation(method_name, f"XML '{xml_path.name}' validated")
     except Exception as exc:
         message = f"XML parse error: {exc}"
@@ -377,6 +394,8 @@ def process_single_method(
     reward_used: Optional[str] = None
     reward_path = find_reward_file(method_dir)
     if reward_path:
+        result["reward_path"] = str(reward_path.resolve())
+        result["reward_sha256"] = hashlib.sha256(reward_path.read_bytes()).hexdigest()
         api = inspect_reward_api(reward_path)
         if api != "compute_reward":
             log_validation(
@@ -404,21 +423,43 @@ def process_single_method(
     for seed in seeds:
         seed_hparams = dict(hyperparams)
         seed_hparams["seed"] = int(seed)
+        history: List[Tuple[int, float]] = []
         try:
             metrics, history = run_training(env_name, xml_path, reward_fn, algo, seed_hparams)
             per_seed_histories[int(seed)] = history
             score = extract_score(metrics)
             if score is None:
                 raise RuntimeError("Training metrics missing distance/reward fields")
+            for step, distance in history:
+                if not math.isfinite(float(distance)):
+                    raise ValueError(f"Non-finite distance in training history at step {step}: {distance}")
             per_seed_scores[int(seed)] = float(score)
+            result["successful_seeds"].append(int(seed))
             result["scores_by_seed"][str(seed)] = float(score)
             result["errors_by_seed"][str(seed)] = None
             log_validation(method_name, f"Seed {seed}: training complete (distance={score:.2f})")
         except Exception as exc:
-            message = f"{exc}"
+            message = f"{type(exc).__name__}: {exc}"
+            result["failed_seeds"].append(int(seed))
             per_seed_histories[int(seed)] = []
             result["scores_by_seed"][str(seed)] = None
             result["errors_by_seed"][str(seed)] = message
+            result["error_details_by_seed"][str(seed)] = {
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+                "history": [
+                    {"step": int(step), **metrics_to_json({"distance": distance})}
+                    for step, distance in history
+                ],
+            }
+            failure_details = result["error_details_by_seed"][str(seed)]
+            first_nonfinite = next(
+                (point for point in failure_details["history"] if isinstance(point["distance"], str)),
+                None,
+            )
+            if first_nonfinite is not None:
+                failure_details["first_nonfinite_history"] = first_nonfinite
             log_validation(method_name, f"Seed {seed}: training failed: {message}", ok=False)
 
     distance_histories_by_seed[method_name] = per_seed_histories
@@ -437,6 +478,11 @@ def process_single_method(
             high = float(np.percentile(boot_means, 100.0 * (1.0 - alpha)))
             result["score_ci"] = [low, high]
         log_validation(method_name, f"Mean distance over {len(per_seed_scores)} seeds: {result['score']:.2f}")
+        if result["failed_seeds"]:
+            result["error"] = (
+                f"{len(result['failed_seeds'])} of {len(seeds)} seeds failed; "
+                "score and confidence interval use successful seeds only."
+            )
     else:
         result["error"] = "All seeds failed to train."
 
@@ -548,7 +594,8 @@ def save_results_file(
         "results": results,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2))
+    with path.open("x") as stream:
+        json.dump(payload, stream, indent=2, allow_nan=False)
     log_validation("", f"Saved results JSON to {path}")
 
 
@@ -601,7 +648,8 @@ def save_history_file(
         "distance_history_summary": serialized_summary,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2))
+    with path.open("x") as stream:
+        json.dump(payload, stream, indent=2, allow_nan=False)
     log_validation("", f"Saved history JSON to {path}")
 
 
@@ -708,6 +756,15 @@ def main():
     parser.set_defaults(recursive=True)
     args = parser.parse_args()
 
+    if args.num_seeds < 1:
+        parser.error("--num-seeds must be positive")
+    if not 0 < args.ci < 1:
+        parser.error("--ci must be between 0 and 1")
+    if args.bootstrap_samples < 1:
+        parser.error("--bootstrap-samples must be positive")
+    if args.num_evals is not None and args.num_evals < 1:
+        parser.error("--num-evals must be positive")
+
     cfg = load_cfg(args.config, args.env)
     env_name = getattr(getattr(cfg, "env", None), "env_name", args.env)
     algo, hyperparams = resolve_algo_and_hparams(cfg)
@@ -718,6 +775,8 @@ def main():
     base_seed = int(args.seed) if args.seed is not None else int(hyperparams.get("seed", 0))
     if args.seeds is not None:
         seeds = [int(s) for s in args.seeds]
+        if len(set(seeds)) != len(seeds):
+            parser.error("--seeds must contain distinct seeds")
     else:
         seeds = [base_seed + i for i in range(max(1, int(args.num_seeds)))]
     log_validation("", f"Running {len(seeds)} seed(s) per method: {seeds}")
@@ -729,13 +788,24 @@ def main():
 
     output_dir = (REPO_ROOT / "outputs" / "baselines" / env_name).resolve()
     plot_dir = (args.plot_dir or output_dir).resolve()
+    results_file = (args.results_file or (output_dir / f"{env_name}_baseline_results.json")).resolve()
+    history_file = (args.history_file or (output_dir / f"{env_name}_distance_history.json")).resolve()
+    plot_file = plot_dir / f"{env_name}_distance_curves_ci.png"
+    if len({results_file, history_file, plot_file}) != 3:
+        parser.error("Result, history, and plot paths must be different")
+    for path in (results_file, history_file, plot_file):
+        if path.exists():
+            parser.error(f"Output already exists: {path}. Choose new output paths.")
 
     method_dirs = discover_method_dirs(base_dir, recursive=args.recursive)
     if args.methods:
         requested = set(args.methods)
+        missing = requested - {d.name for d in method_dirs}
+        if missing:
+            parser.error(f"Unknown baseline method(s): {', '.join(sorted(missing))}")
         method_dirs = [d for d in method_dirs if d.name in requested]
     if not method_dirs:
-        log_validation("", f"No method directories found under {base_dir}", ok=False)
+        parser.error(f"No method directories found under {base_dir}")
 
     distance_histories_by_seed: Dict[str, Dict[int, List[Tuple[int, float]]]] = {}
     results = [
@@ -755,31 +825,19 @@ def main():
     ]
     results.sort(key=lambda item: item["method_name"])
 
-    plot_path = plot_distance_histories_with_ci(
-        distance_histories_by_seed,
-        env_name,
-        plot_dir,
-        ci=float(args.ci),
-        bootstrap_samples=int(args.bootstrap_samples),
-        bootstrap_seed=int(args.bootstrap_seed),
-        plot_seed_traces=bool(args.plot_seed_traces),
-    )
-
-    results_file = (args.results_file or (output_dir / f"{env_name}_baseline_results.json")).resolve()
     save_results_file(
         results,
         env_name,
         algo,
         base_dir,
         results_file,
-        plot_path,
+        plot_file,
         seeds=seeds,
         ci=float(args.ci),
         bootstrap_samples=int(args.bootstrap_samples),
         bootstrap_seed=int(args.bootstrap_seed),
     )
 
-    history_file = (args.history_file or (output_dir / f"{env_name}_distance_history.json")).resolve()
     save_history_file(
         distance_histories_by_seed,
         env_name,
@@ -789,8 +847,20 @@ def main():
         bootstrap_seed=int(args.bootstrap_seed),
     )
 
-    json.dump(results, sys.stdout, indent=2)
+    plot_distance_histories_with_ci(
+        distance_histories_by_seed,
+        env_name,
+        plot_dir,
+        ci=float(args.ci),
+        bootstrap_samples=int(args.bootstrap_samples),
+        bootstrap_seed=int(args.bootstrap_seed),
+        plot_seed_traces=bool(args.plot_seed_traces),
+    )
+
+    json.dump(results, sys.stdout, indent=2, allow_nan=False)
     print()
+    if any(result["error"] is not None for result in results):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

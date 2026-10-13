@@ -12,6 +12,7 @@ Architecture:
 import os
 import re
 import json
+import math
 import time
 import random
 import sys
@@ -729,7 +730,7 @@ class DebateOrchestrator:
         """Track the best validated design for future prompt context (must strictly outperform)."""
         if not entry or not entry.valid:
             return
-        if entry.score != entry.score:
+        if not math.isfinite(entry.score):
             return
         if self.best_entry is None or entry.score > self.best_entry.score:
             self.best_entry = entry
@@ -1630,7 +1631,13 @@ class DebateOrchestrator:
                             print(f"[Round {r}] {msg}")
                             pooled_results = []
 
-                        score_by_path = {str(Path(p).resolve()): float(s) for p, s in pooled_results}
+                        score_by_path = {
+                            str(Path(p).resolve()): float(s) for p, s in pooled_results
+                            if math.isfinite(float(s))
+                        }
+                        failed_paths = [str(p) for p, s in pooled_results if not math.isfinite(float(s))]
+                        if failed_paths:
+                            round_errors.append(f"Training failed or returned invalid scores for: {', '.join(failed_paths)}")
 
                         for record in cand_records.values():
                             cand_idx = record["cand_idx"]
@@ -1704,6 +1711,19 @@ class DebateOrchestrator:
                             print(f"[Round {r}] {msg}")
 
                     self.cfg.suffix = orig_suffix
+
+                # Failed training is diagnostic evidence, never a valid design winner.
+                failed_candidates = [c for c in round_candidates if not math.isfinite(float(c.get("score", float("-inf"))))]
+                if failed_candidates:
+                    round_errors.append(
+                        "Training failed or returned invalid scores for: "
+                        + ", ".join(str(c.get("path", c.get("label", "unknown"))) for c in failed_candidates)
+                    )
+                round_candidates = [c for c in round_candidates if math.isfinite(float(c.get("score", float("-inf"))))]
+                if not round_candidates:
+                    msg = f"No candidate produced a finite evaluation score in round {r}; no winner or judge evaluation."
+                    round_errors.append(msg)
+                    print(f"[Round {r}] {msg}")
 
                 # After processing all candidates, select the best by objective score and run judges once
                 if round_candidates:
@@ -1905,7 +1925,7 @@ class DebateOrchestrator:
                                 data = _json.load(open(score_file))
                                 for which, scores in data.items():
                                     for reward_name, score_val in scores.items():
-                                        if score_val > best_score:
+                                        if math.isfinite(float(score_val)) and score_val > best_score:
                                             best_score = float(score_val)
                                             best_label = which  # "thesis" or "synthesis"
                                             best_reward = reward_name

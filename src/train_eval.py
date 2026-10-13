@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple, Callable, Optional
 import functools
+import json
+import math
 import os
+from pathlib import Path
 import sys
+import traceback
 
 import wandb
 import hydra
@@ -18,11 +22,49 @@ from brax.io import model as brax_model
 from brax.training.agents.ppo import train as ppo
 from brax.training.agents.sac import train as sac
 
+
+class CandidateMetricsError(ValueError):
+    """Training did not produce a finite metric suitable for ranking."""
+
+
+def extract_training_score(metrics) -> float:
+    """Use the existing ranking priority, rejecting absent or nonfinite scores."""
+    for key in (
+        "eval/episode_distance_from_origin",
+        "eval/episode_reward_forward",
+        "eval/episode_reward_run",
+        "eval/episode_forward_reward",
+        "eval/episode_reward",
+    ):
+        if key in metrics:
+            try:
+                value = float(metrics[key])
+            except (TypeError, ValueError) as exc:
+                raise CandidateMetricsError(f"Invalid training metric {key}: {metrics[key]}") from exc
+            if not math.isfinite(value):
+                raise CandidateMetricsError(f"Nonfinite training metric {key}: {value}")
+            return value
+    raise CandidateMetricsError(
+        f"No evaluation score metric found. Available keys: {sorted(metrics)}"
+    )
+
+
+def metrics_to_json(metrics) -> Dict[str, Any]:
+    """Convert scalar device values, retaining nonfinite diagnostics as strings."""
+    result = {}
+    for key, value in metrics.items():
+        scalar = float(value)
+        result[key] = scalar if math.isfinite(scalar) else str(scalar)
+    return result
+
+
 def build_ppo_budget_from_cfg(cfg) -> Dict[str, Any]:
     """
     Reads PPO hyperparameters from Hydra cfg.rl.ppo and returns kwargs for agents.ppo.train.
     Hierarchical: prefer env-specific block, fall back to global cfg.rl.ppo.
     """
+    if isinstance(cfg, dict):
+        cfg = OmegaConf.create(cfg)
     # Prefer env-specific overrides under cfg.env_rl_overrides for this env
     env_name = None
     if isinstance(cfg, dict):
@@ -76,6 +118,8 @@ def build_sac_budget_from_cfg(cfg) -> Dict[str, Any]:
     Reads SAC hyperparameters from Hydra cfg.rl.sac and returns kwargs for agents.sac.train.
     Hierarchical: prefer env-specific block, fall back to global cfg.rl.sac
     """
+    if isinstance(cfg, dict):
+        cfg = OmegaConf.create(cfg)
     # Prefer env-specific overrides under cfg.env_rl_overrides for this env
     env_name = None
     if isinstance(cfg, dict):
@@ -126,6 +170,8 @@ def train_candidate(cfg, reward_fn=None, round_dir=None, candidate_idx=None, cus
     Trains a policy on `env` with a short budget.
     Returns (inference_fn, params, train_metrics).
     """
+    if isinstance(cfg, dict):
+        cfg = OmegaConf.create(cfg)
     env = make_env(cfg, reward_fn, custom_xml_path)
     # Build algo-specific budget
     # Enforce presence of rl.algo: fail loudly if missing to avoid silent defaults
@@ -150,6 +196,27 @@ def train_candidate(cfg, reward_fn=None, round_dir=None, candidate_idx=None, cus
             budget[key] = value
 
     train_fn = functools.partial(algo_train, **budget)
+
+    history_path = None
+    artifact_tag = str(candidate_idx)
+    if round_dir is not None:
+        directory = Path(round_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        attempt = 0
+        while True:
+            artifact_tag = str(candidate_idx) + (f"_attempt{attempt}" if attempt else "")
+            history_path = directory / f"training_history_{artifact_tag}.jsonl"
+            if any((directory / f"{prefix}_{artifact_tag}.json").exists() for prefix in ("training_config", "training_error")):
+                attempt += 1
+                continue
+            try:
+                with history_path.open("x"):
+                    pass
+                break
+            except FileExistsError:
+                attempt += 1
+        with (directory / f"training_config_{artifact_tag}.json").open("x") as file:
+            json.dump({"algo": algo, "hyperparameters": budget, "xml_path": str(custom_xml_path) if custom_xml_path is not None else None}, file, indent=2)
 
     steps = []
     rewards = []
@@ -176,6 +243,9 @@ def train_candidate(cfg, reward_fn=None, round_dir=None, candidate_idx=None, cus
             print(f"[W&B] Initialization failed: {e}")
 
     def progress(num_steps, metrics):
+        if history_path is not None:
+            with history_path.open("a") as file:
+                file.write(json.dumps({"step": int(num_steps), "metrics": metrics_to_json(metrics)}, allow_nan=False) + "\n")
         steps.append(num_steps)
         rewards.append(metrics['eval/episode_reward'])
 
@@ -205,15 +275,22 @@ def train_candidate(cfg, reward_fn=None, round_dir=None, candidate_idx=None, cus
 
         print(f"Step: {num_steps}, distance: {distance}, reward: {metrics['eval/episode_reward']}, forward_reward: {forward_reward}")
 
-    inference_fn, params, train_metrics = train_fn(environment=env, progress_fn=progress)
-
-    # Finish wandb run if it was initialized
-    if wandb_initialized:
-        try:
-            wandb.finish()
-            print(f"[W&B] Finished candidate {candidate_idx} run")
-        except Exception as e:
-            print(f"[W&B] Finish failed: {e}")
+    try:
+        inference_fn, params, train_metrics = train_fn(environment=env, progress_fn=progress)
+    except Exception as exc:
+        if history_path is not None:
+            error_path = Path(round_dir) / f"training_error_{artifact_tag}.json"
+            with error_path.open("x") as file:
+                json.dump({"error_type": type(exc).__name__, "error": str(exc), "traceback": traceback.format_exc()}, file, indent=2)
+        raise
+    finally:
+        # Finish wandb even if training raised, so subsequent candidates start fresh.
+        if wandb_initialized:
+            try:
+                wandb.finish()
+                print(f"[W&B] Finished candidate {candidate_idx} run")
+            except Exception as e:
+                print(f"[W&B] Finish failed: {e}")
 
     return inference_fn, params, train_metrics
 
